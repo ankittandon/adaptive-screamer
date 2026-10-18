@@ -1067,6 +1067,9 @@ impl App {
                                                 &result.text,
                                                 app_context,
                                             );
+                                            // Watch the focused field and capture the
+                                            // final edited text once it is sent.
+                                            crate::telemetry::start_implicit_capture(store.clone());
                                         }
                                     }
                                     Err(err) => {

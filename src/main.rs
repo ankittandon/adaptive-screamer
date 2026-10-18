@@ -1,4 +1,5 @@
 mod app;
+mod axtext;
 mod branding;
 mod config;
 mod hotkey;

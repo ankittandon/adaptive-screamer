@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 pub enum LabelSource {
     /// The user selected the corrected text and tapped the fix hotkey.
     Fix,
-    /// Detected automatically from an edit in the target app (not implemented yet).
+    /// Captured automatically: the final, user-edited text read from the focused
+    /// field via the Accessibility API once the message was sent.
     Implicit,
 }
 

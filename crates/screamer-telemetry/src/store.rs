@@ -155,7 +155,19 @@ impl TelemetryStore {
     /// dictation is no longer pending; on any error it stays pending so the
     /// user can select again and retry.
     pub fn apply_fix(&self, selected_text: &str) -> Result<LabelRecord, FixError> {
-        let settled = selected_text.trim();
+        self.apply_label(selected_text, LabelSource::Fix)
+    }
+
+    /// Attach the final, user-edited text of the target field as the corrected
+    /// transcript of the most recent dictation. Same guardrails as `apply_fix`,
+    /// but recorded with `label_source: "implicit"`. Used by the automatic
+    /// Accessibility-based capture (no hotkey, no manual selection).
+    pub fn apply_implicit_fix(&self, final_text: &str) -> Result<LabelRecord, FixError> {
+        self.apply_label(final_text, LabelSource::Implicit)
+    }
+
+    fn apply_label(&self, text: &str, source: LabelSource) -> Result<LabelRecord, FixError> {
+        let settled = text.trim();
         if settled.is_empty() {
             return Err(FixError::EmptySelection);
         }
@@ -178,7 +190,7 @@ impl TelemetryStore {
             id: last.id.clone(),
             labeled_at: format_rfc3339_utc(secs),
             settled_text: settled.to_string(),
-            label_source: LabelSource::Fix,
+            label_source: source,
             edit_ratio: ratio,
         };
         self.append(&Event::Label(label.clone()))?;
@@ -432,6 +444,28 @@ mod tests {
         store.log_dictation(dictation(&[0.1], "ship it")).unwrap();
         let label = store.apply_fix("ship it").unwrap();
         assert_eq!(label.edit_ratio, 0.0);
+    }
+
+    #[test]
+    fn implicit_fix_records_the_implicit_source_and_consumes_the_dictation() {
+        let tmp = TempDir::new();
+        let store = TelemetryStore::open(&tmp.0).unwrap();
+        store
+            .log_dictation(dictation(&[0.1; 160], "we use cooper netties for the cluster"))
+            .unwrap();
+
+        let label = store
+            .apply_implicit_fix("we use Kubernetes for the cluster")
+            .unwrap();
+        assert_eq!(label.label_source, LabelSource::Implicit);
+        assert_eq!(label.settled_text, "we use Kubernetes for the cluster");
+        assert_eq!(label.edit_ratio, 0.2857);
+
+        // The dictation is consumed, so a manual fix afterward finds nothing.
+        assert!(matches!(
+            store.apply_fix("we use Kubernetes for the cluster"),
+            Err(FixError::NothingToFix)
+        ));
     }
 
     #[test]

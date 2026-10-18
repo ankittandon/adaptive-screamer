@@ -11,7 +11,9 @@ use objc2::runtime::AnyObject;
 use objc2_foundation::NSString;
 use screamer_telemetry::{NewDictation, TelemetryStore};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// `~/Library/Application Support/Screamer/telemetry`
 pub fn telemetry_dir() -> PathBuf {
@@ -105,6 +107,76 @@ pub fn apply_fix_from_selection(store: &TelemetryStore) -> bool {
             false
         }
     }
+}
+
+/// How often the implicit-capture watcher reads the focused text field.
+const IMPLICIT_POLL_INTERVAL: Duration = Duration::from_millis(400);
+/// Stop watching a dictation this long after it was logged.
+const IMPLICIT_MAX_WATCH: Duration = Duration::from_secs(10 * 60);
+/// Consecutive empty/unreadable reads (after the field held text) that count as
+/// "the message was sent / the field was cleared".
+const IMPLICIT_CLEAR_DEBOUNCE: u32 = 2;
+
+/// Generation counter so only the newest dictation is watched; each new
+/// dictation supersedes any still-running watcher.
+static WATCH_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// After a dictation is logged, watch the frontmost focused text field. When it
+/// clears (you sent or submitted the message), record the final user-edited text
+/// as an implicit correction of that dictation — no hotkey, no selection needed.
+///
+/// Only the most recent dictation is watched at a time, and the store's own
+/// guardrails (not empty, within the fix window, not wildly different from the
+/// raw transcript) still apply, so an unrelated field value is rejected.
+pub fn start_implicit_capture(store: Arc<TelemetryStore>) {
+    let my_gen = WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        let mut last_nonempty: Option<String> = None;
+        let mut saw_text = false;
+        let mut empty_reads: u32 = 0;
+
+        loop {
+            if WATCH_GEN.load(Ordering::SeqCst) != my_gen || start.elapsed() >= IMPLICIT_MAX_WATCH {
+                return;
+            }
+            std::thread::sleep(IMPLICIT_POLL_INTERVAL);
+            if WATCH_GEN.load(Ordering::SeqCst) != my_gen {
+                return;
+            }
+
+            match crate::axtext::focused_text() {
+                Some(text) if !text.trim().is_empty() => {
+                    last_nonempty = Some(text);
+                    saw_text = true;
+                    empty_reads = 0;
+                }
+                _ => {
+                    if !saw_text {
+                        continue; // field not focused/readable yet — keep waiting
+                    }
+                    empty_reads += 1;
+                    if empty_reads < IMPLICIT_CLEAR_DEBOUNCE {
+                        continue;
+                    }
+                    // The field held text and is now empty: treat the last
+                    // non-empty value as the final, user-edited message.
+                    if let Some(final_text) = last_nonempty.take() {
+                        match store.apply_implicit_fix(&final_text) {
+                            Ok(label) => logging::log_flow_event(
+                                "telemetry",
+                                "implicit",
+                                &format!("id={} edit_ratio={}", label.id, label.edit_ratio),
+                            ),
+                            Err(err) => eprintln!("[screamer] Implicit label skipped: {err}"),
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+    });
 }
 
 /// Bundle id (e.g. `com.apple.Notes`) of the frontmost app. Never a window title.
