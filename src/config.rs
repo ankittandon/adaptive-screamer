@@ -151,6 +151,14 @@ pub struct Config {
     pub accessibility_helper_dismissed: bool,
     #[serde(default = "default_vision_hotkey")]
     pub vision_hotkey: String,
+    /// Opt-in: save each dictation's audio and text under
+    /// `~/Library/Application Support/Screamer/telemetry` (never uploaded).
+    #[serde(default)]
+    pub telemetry_enabled: bool,
+    /// Tap this key to attach the currently selected text as the corrected
+    /// transcript of the last dictation. Empty means disabled.
+    #[serde(default)]
+    pub fix_hotkey: String,
 }
 
 impl Default for Config {
@@ -170,6 +178,8 @@ impl Default for Config {
             show_accessibility_helper_on_launch: default_show_accessibility_helper_on_launch(),
             accessibility_helper_dismissed: false,
             vision_hotkey: default_vision_hotkey(),
+            telemetry_enabled: false,
+            fix_hotkey: String::new(),
         }
     }
 }
@@ -415,6 +425,14 @@ impl Config {
             self.vision_hotkey = default.vision_hotkey;
         }
 
+        // The fix key must be a real key that is not already taken.
+        if !HOTKEYS.iter().any(|hotkey| hotkey.id == self.fix_hotkey)
+            || self.fix_hotkey == self.hotkey
+            || self.fix_hotkey == self.vision_hotkey
+        {
+            self.fix_hotkey = default.fix_hotkey;
+        }
+
         self
     }
 }
@@ -443,6 +461,8 @@ mod tests {
         assert!(config.show_accessibility_helper_on_launch);
         assert!(!config.accessibility_helper_dismissed);
         assert_eq!(config.vision_hotkey, "left_option");
+        assert!(!config.telemetry_enabled);
+        assert_eq!(config.fix_hotkey, "");
     }
 
     #[test]
@@ -462,6 +482,8 @@ mod tests {
             show_accessibility_helper_on_launch: false,
             accessibility_helper_dismissed: true,
             vision_hotkey: "right_option".to_string(),
+            telemetry_enabled: true,
+            fix_hotkey: "right_command".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();
@@ -482,6 +504,8 @@ mod tests {
         assert!(!parsed.show_accessibility_helper_on_launch);
         assert!(parsed.accessibility_helper_dismissed);
         assert_eq!(parsed.vision_hotkey, "right_option");
+        assert!(parsed.telemetry_enabled);
+        assert_eq!(parsed.fix_hotkey, "right_command");
     }
 
     #[test]
@@ -504,6 +528,8 @@ mod tests {
         assert!(config.show_accessibility_helper_on_launch);
         assert!(!config.accessibility_helper_dismissed);
         assert_eq!(config.vision_hotkey, "left_option");
+        assert!(!config.telemetry_enabled);
+        assert_eq!(config.fix_hotkey, "");
     }
 
     #[test]
@@ -575,5 +601,29 @@ mod tests {
 
         assert_eq!(config.model, "base");
         assert_eq!(config.hotkey, "left_control");
+    }
+
+    #[test]
+    fn normalize_keeps_a_free_fix_hotkey() {
+        let config = Config {
+            fix_hotkey: "right_command".to_string(),
+            ..Config::default()
+        }
+        .normalized();
+
+        assert_eq!(config.fix_hotkey, "right_command");
+    }
+
+    #[test]
+    fn normalize_disables_a_fix_hotkey_that_is_unknown_or_already_used() {
+        for taken in ["nonexistent", "left_control", "left_option"] {
+            let config = Config {
+                fix_hotkey: taken.to_string(),
+                ..Config::default()
+            }
+            .normalized();
+
+            assert_eq!(config.fix_hotkey, "", "fix_hotkey {taken:?} should be disabled");
+        }
     }
 }
