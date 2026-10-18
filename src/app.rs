@@ -1434,6 +1434,13 @@ impl App {
             Arc::new(Mutex::new(None));
         let vision_screenshot_release = vision_screenshot.clone();
 
+        // ── Opt-in telemetry (off unless telemetry_enabled is set in config.json) ──
+        let telemetry = crate::telemetry::init(&Config::load());
+        let telemetry_dict_release = telemetry.clone();
+        let telemetry_fix = telemetry;
+        let sfx_fix = self.sound_effects_enabled.clone();
+        let pending_sound_fix = self.pending_completion_sound.clone();
+
         hotkey.start_on_main_thread(
             mtm,
             // ── Dictation press ──
@@ -1531,10 +1538,11 @@ impl App {
                     let t = trans_dict_release.clone();
                     let pending_sound = pending_sound_dict.clone();
                     let sfx = sfx_dict_release.clone();
+                    let telemetry = telemetry_dict_release.clone();
                     let stop_ms = release_t0.elapsed().as_millis();
 
                     std::thread::spawn(move || {
-                        match t.transcribe_profiled(&samples[transcribe_window.range]) {
+                        match t.transcribe_profiled(&samples[transcribe_window.range.clone()]) {
                             Ok(result) if !result.text.is_empty() => {
                                 eprintln!(
                                     "[screamer] Transcribed in {}ms ({} chars)",
@@ -1546,6 +1554,11 @@ impl App {
                                 if !permissions::has_accessibility_permission() {
                                     eprintln!("[screamer] Accessibility permission missing; paste may fail");
                                 }
+
+                                // Telemetry: remember which app the text is going into.
+                                let app_context = telemetry
+                                    .as_ref()
+                                    .and_then(|_| crate::telemetry::frontmost_app_bundle_id());
 
                                 let paste_t0 = std::time::Instant::now();
                                 let paste_result = crate::paster::paste(&result.text);
@@ -1562,6 +1575,16 @@ impl App {
                                             paste_ms,
                                             release_t0.elapsed().as_millis()
                                         );
+
+                                        // After the paste, so logging never delays it.
+                                        if let Some(store) = telemetry.as_ref() {
+                                            crate::telemetry::log_dictation(
+                                                store,
+                                                &samples[transcribe_window.range],
+                                                &result.text,
+                                                app_context,
+                                            );
+                                        }
                                     }
                                     Err(err) => {
                                         eprintln!("[screamer] Paste failed after {}ms: {}", paste_ms, err);
@@ -1836,6 +1859,22 @@ impl App {
                         }
                     });
                 }
+            },
+            // ── Fix (telemetry): tap to label the last dictation with the selected text ──
+            move || {
+                let Some(store) = telemetry_fix.clone() else {
+                    return;
+                };
+                let pending_sound = pending_sound_fix.clone();
+                let sfx = sfx_fix.clone();
+                // Reading the selection waits on the clipboard, so keep it off the main thread.
+                std::thread::spawn(move || {
+                    if crate::telemetry::apply_fix_from_selection(&store)
+                        && sfx.load(Ordering::Relaxed)
+                    {
+                        pending_sound.store(true, Ordering::SeqCst);
+                    }
+                });
             },
         );
 

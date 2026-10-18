@@ -2411,6 +2411,7 @@ dependencies = [
  "screamer-core",
  "screamer-diarization",
  "screamer-models",
+ "screamer-telemetry",
  "screamer-whisper",
  "serde",
  "serde_json",

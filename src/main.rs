@@ -23,6 +23,7 @@ mod settings_window;
 mod sound;
 mod speech;
 mod summary_backend;
+mod telemetry;
 mod theme;
 mod vision;
 

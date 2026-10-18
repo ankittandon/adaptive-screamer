@@ -4,11 +4,16 @@ use objc2_foundation::MainThreadMarker;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
+/// `fix_index` value meaning "no fix hotkey configured".
+const FIX_DISABLED: usize = usize::MAX;
+
 pub struct Hotkey {
     dictation_pressed: Arc<AtomicBool>,
     vision_pressed: Arc<AtomicBool>,
+    fix_pressed: Arc<AtomicBool>,
     dictation_index: Arc<AtomicUsize>,
     vision_index: Arc<AtomicUsize>,
+    fix_index: Arc<AtomicUsize>,
 }
 
 impl Hotkey {
@@ -16,8 +21,10 @@ impl Hotkey {
         Self {
             dictation_pressed: Arc::new(AtomicBool::new(false)),
             vision_pressed: Arc::new(AtomicBool::new(false)),
+            fix_pressed: Arc::new(AtomicBool::new(false)),
             dictation_index: Arc::new(AtomicUsize::new(hotkey_index_for_id(&config.hotkey))),
             vision_index: Arc::new(AtomicUsize::new(hotkey_index_for_id(&config.vision_hotkey))),
+            fix_index: Arc::new(AtomicUsize::new(fix_index_for_id(&config.fix_hotkey))),
         }
     }
 
@@ -46,6 +53,10 @@ impl Hotkey {
     /// Two independent push-to-talk keys:
     /// - Dictation: `on_dictation_press` / `on_dictation_release` (configurable key)
     /// - Vision: `on_vision_press` / `on_vision_release` (configurable key, default Left Option)
+    ///
+    /// Plus an optional third key, the telemetry "fix" key. It is a tap: only the
+    /// release is reported, and only if the key went down while neither push-to-talk
+    /// key was held.
     pub fn start_on_main_thread(
         &self,
         _mtm: MainThreadMarker,
@@ -53,11 +64,14 @@ impl Hotkey {
         on_dictation_release: impl Fn() + 'static,
         on_vision_press: impl Fn() + 'static,
         on_vision_release: impl Fn() + 'static,
+        on_fix_release: impl Fn() + 'static,
     ) {
         let dictation_pressed = self.dictation_pressed.clone();
         let vision_pressed = self.vision_pressed.clone();
         let dictation_index = self.dictation_index.clone();
         let vision_index = self.vision_index.clone();
+        let fix_pressed = self.fix_pressed.clone();
+        let fix_index = self.fix_index.clone();
 
         let dict_info = HOTKEYS
             .get(dictation_index.load(Ordering::Relaxed))
@@ -146,6 +160,40 @@ impl Hotkey {
                 vision_pressed.store(false, Ordering::SeqCst);
                 on_vision_release();
             }
+
+            // ── Fix hotkey (telemetry): tap to label the last dictation ──
+            let fix_idx = fix_index.load(Ordering::Relaxed);
+            if let Some(fix_info) = HOTKEYS.get(fix_idx) {
+                let taken = fix_idx == dictation_index.load(Ordering::Relaxed)
+                    || fix_idx == vision_index.load(Ordering::Relaxed);
+
+                let fix_modifier_down = (flags & fix_info.modifier_flag) != 0;
+                let fix_key_down = if fix_info.device_flag != 0 {
+                    fix_modifier_down && (flags & fix_info.device_flag) != 0
+                } else {
+                    fix_modifier_down
+                };
+
+                let fix_was = fix_pressed.load(Ordering::SeqCst);
+
+                if fix_key_down && !fix_was {
+                    if !taken
+                        && !dictation_pressed.load(Ordering::SeqCst)
+                        && !vision_pressed.load(Ordering::SeqCst)
+                    {
+                        fix_pressed.store(true, Ordering::SeqCst);
+                    }
+                } else if !fix_key_down && fix_was {
+                    eprintln!(
+                        "[screamer] Fix {} tapped (flags=0x{:x})",
+                        fix_info.label, flags
+                    );
+                    fix_pressed.store(false, Ordering::SeqCst);
+                    on_fix_release();
+                }
+            } else {
+                fix_pressed.store(false, Ordering::SeqCst);
+            }
         });
 
         unsafe {
@@ -162,6 +210,13 @@ impl Hotkey {
             }
         }
     }
+}
+
+fn fix_index_for_id(hotkey_id: &str) -> usize {
+    HOTKEYS
+        .iter()
+        .position(|hotkey| hotkey.id == hotkey_id)
+        .unwrap_or(FIX_DISABLED)
 }
 
 fn hotkey_index_for_id(hotkey_id: &str) -> usize {

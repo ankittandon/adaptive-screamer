@@ -98,6 +98,7 @@ arboard = "3"
 screamer-core = { path = "crates/screamer-core" }
 screamer-diarization = { path = "crates/screamer-diarization" }
 screamer-models = { path = "crates/screamer-models" }
+screamer-telemetry = { path = "crates/screamer-telemetry" }
 screamer-whisper = { path = "crates/screamer-whisper" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
