@@ -52,10 +52,15 @@ detect_codesign_identity() {
         return
     fi
 
-    # Fall back to the stable self-signed identity if it exists.
-    if "$SYSTEM_SECURITY" find-identity -v -p codesigning 2>/dev/null \
-        | grep -qF "$SELF_SIGNED_IDENTITY"; then
-        echo "$SELF_SIGNED_IDENTITY"
+    # Fall back to the stable self-signed identity if it exists. No -v here: a
+    # self-signed cert isn't trusted, so it won't appear in the "valid" list,
+    # but codesign can still sign with it. Match by SHA-1 hash rather than name,
+    # since the name can be ambiguous if more than one such cert was created.
+    local self_hash
+    self_hash="$("$SYSTEM_SECURITY" find-identity -p codesigning 2>/dev/null \
+        | awk -v name="$SELF_SIGNED_IDENTITY" 'index($0, name) { print $2; exit }')"
+    if [ -n "$self_hash" ]; then
+        echo "$self_hash"
         return
     fi
 

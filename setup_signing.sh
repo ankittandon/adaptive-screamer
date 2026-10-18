@@ -18,7 +18,7 @@ KEYCHAIN="${KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
 SECURITY="/usr/bin/security"
 OPENSSL="/usr/bin/openssl"
 
-if "$SECURITY" find-identity -v -p codesigning 2>/dev/null | grep -qF "$IDENTITY_NAME"; then
+if "$SECURITY" find-identity -p codesigning 2>/dev/null | grep -qF "$IDENTITY_NAME"; then
     echo "Signing identity already present: '$IDENTITY_NAME'"
     echo "Nothing to do. Build with ./bundle.sh"
     exit 0
@@ -50,17 +50,17 @@ EOF
     -days 3650 \
     -config "$CONFIG" >/dev/null 2>&1
 
-"$OPENSSL" pkcs12 -export \
-    -inkey "$WORKDIR/key.pem" \
-    -in "$WORKDIR/cert.pem" \
-    -name "$IDENTITY_NAME" \
-    -out "$WORKDIR/identity.p12" \
-    -passout pass: >/dev/null 2>&1
-
-# Import the key+cert, granting /usr/bin/codesign access to the private key.
-"$SECURITY" import "$WORKDIR/identity.p12" \
+# Import the private key and certificate separately, granting /usr/bin/codesign
+# access to the key. (A PKCS#12 with an empty password fails MAC verification on
+# macOS's security import, so we avoid the .p12 path entirely.) The keychain
+# pairs the key and cert into a code-signing identity by their matching key.
+"$SECURITY" import "$WORKDIR/key.pem" \
     -k "$KEYCHAIN" \
-    -P "" \
+    -T /usr/bin/codesign \
+    -A
+
+"$SECURITY" import "$WORKDIR/cert.pem" \
+    -k "$KEYCHAIN" \
     -T /usr/bin/codesign \
     -A
 
@@ -82,7 +82,7 @@ else
 fi
 
 echo ""
-if "$SECURITY" find-identity -v -p codesigning 2>/dev/null | grep -qF "$IDENTITY_NAME"; then
+if "$SECURITY" find-identity -p codesigning 2>/dev/null | grep -qF "$IDENTITY_NAME"; then
     echo "Done. Identity '$IDENTITY_NAME' is ready."
     echo "Now run ./bundle.sh — it will sign with this identity automatically."
 else
