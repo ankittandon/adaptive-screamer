@@ -158,6 +158,30 @@ Key settings:
 - `summary_ollama_model`: local Ollama model to use when `summary_backend` is `ollama`
 - `show_accessibility_helper_on_launch`: whether the helper window should appear on first launch
 - `accessibility_helper_dismissed`: remembers whether the helper window was dismissed
+- `telemetry_enabled`: opt-in, default `false`. Save each dictation locally (see [Dictation telemetry](#dictation-telemetry-opt-in))
+- `fix_hotkey`: optional tap key for attaching a correction to the last dictation. Empty (default) disables it; otherwise any key id other than your dictation and vision keys, e.g. `right_command`
+
+## Dictation telemetry (opt-in)
+
+Off by default. Set `"telemetry_enabled": true` in `config.json` and restart Screamer, and every dictation is saved to `~/Library/Application Support/Screamer/telemetry/`:
+
+- `clips/<id>.wav`: the 16 kHz mono audio that was sent to the model
+- `records.jsonl`: an append-only log, one JSON object per line
+
+Nothing is uploaded. The folder and files are readable by your user only. It is a recording of everything you dictate, so treat it as sensitive.
+
+Each dictation record has `id`, `timestamp`, `audio_path` (relative to the telemetry folder), `duration_ms`, `model`, `raw_text` (what the model produced), `pasted_text` and `app_context` (the frontmost app's bundle id, never a window title).
+
+**Recording corrections.** Set `"fix_hotkey"` to a modifier key you don't use for dictation or vision, for example `"right_command"`. After you fix a pasted dictation by hand, select the corrected passage and tap that key. Screamer copies the selection, puts your previous clipboard text back (clipboard images are not preserved), and attaches the selection to your most recent dictation as `settled_text`, with `label_source: "fix"` and an `edit_ratio` (share of words changed). You hear the completion sound when it is saved. A correction is refused if nothing is selected, if the dictation is more than 10 minutes old, or if the selection differs too much from the transcript to be the same sentence.
+
+**Export** the corrected pairs as JSON lines for fine-tuning:
+
+```bash
+cargo run --release -p screamer-telemetry --bin screamer-telemetry-export -- \
+  "$HOME/Library/Application Support/Screamer/telemetry" > labeled.jsonl
+```
+
+Add `--all` to include dictations you never corrected.
 
 ## Native Ambient Final Pass
 
