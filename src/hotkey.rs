@@ -9,10 +9,8 @@ const FIX_DISABLED: usize = usize::MAX;
 
 pub struct Hotkey {
     dictation_pressed: Arc<AtomicBool>,
-    vision_pressed: Arc<AtomicBool>,
     fix_pressed: Arc<AtomicBool>,
     dictation_index: Arc<AtomicUsize>,
-    vision_index: Arc<AtomicUsize>,
     fix_index: Arc<AtomicUsize>,
 }
 
@@ -20,10 +18,8 @@ impl Hotkey {
     pub fn new(config: &Config) -> Self {
         Self {
             dictation_pressed: Arc::new(AtomicBool::new(false)),
-            vision_pressed: Arc::new(AtomicBool::new(false)),
             fix_pressed: Arc::new(AtomicBool::new(false)),
             dictation_index: Arc::new(AtomicUsize::new(hotkey_index_for_id(&config.hotkey))),
-            vision_index: Arc::new(AtomicUsize::new(hotkey_index_for_id(&config.vision_hotkey))),
             fix_index: Arc::new(AtomicUsize::new(fix_index_for_id(&config.fix_hotkey))),
         }
     }
@@ -38,55 +34,30 @@ impl Hotkey {
         );
     }
 
-    pub fn set_vision_hotkey(&self, hotkey_id: &str) {
-        let index = hotkey_index_for_id(hotkey_id);
-        let hotkey_info = HOTKEYS.get(index).unwrap_or(&HOTKEYS[2]);
-        self.vision_index.store(index, Ordering::Relaxed);
-        eprintln!(
-            "[screamer] Updated vision hotkey to: {} (modifier=0x{:x}, device=0x{:x})",
-            hotkey_info.label, hotkey_info.modifier_flag, hotkey_info.device_flag
-        );
-    }
-
-    /// Start listening using NSEvent global monitor on the main thread.
+    /// Start listening using an NSEvent global monitor on the main thread.
     ///
-    /// Two independent push-to-talk keys:
-    /// - Dictation: `on_dictation_press` / `on_dictation_release` (configurable key)
-    /// - Vision: `on_vision_press` / `on_vision_release` (configurable key, default Left Option)
-    ///
-    /// Plus an optional third key, the telemetry "fix" key. It is a tap: only the
-    /// release is reported, and only if the key went down while neither push-to-talk
-    /// key was held.
+    /// - Dictation: `on_dictation_press` / `on_dictation_release` (configurable push-to-talk key)
+    /// - Fix (telemetry): `on_fix_release`, an optional tap key. Only the release is
+    ///   reported, and only if the key went down while dictation was not held.
     pub fn start_on_main_thread(
         &self,
         _mtm: MainThreadMarker,
         on_dictation_press: impl Fn() + 'static,
         on_dictation_release: impl Fn() + 'static,
-        on_vision_press: impl Fn() + 'static,
-        on_vision_release: impl Fn() + 'static,
         on_fix_release: impl Fn() + 'static,
     ) {
         let dictation_pressed = self.dictation_pressed.clone();
-        let vision_pressed = self.vision_pressed.clone();
         let dictation_index = self.dictation_index.clone();
-        let vision_index = self.vision_index.clone();
         let fix_pressed = self.fix_pressed.clone();
         let fix_index = self.fix_index.clone();
 
         let dict_info = HOTKEYS
             .get(dictation_index.load(Ordering::Relaxed))
             .unwrap_or(&HOTKEYS[0]);
-        let vis_info = HOTKEYS
-            .get(vision_index.load(Ordering::Relaxed))
-            .unwrap_or(&HOTKEYS[2]);
 
         eprintln!(
             "[screamer] Dictation hotkey: {} (modifier=0x{:x}, device=0x{:x})",
             dict_info.label, dict_info.modifier_flag, dict_info.device_flag
-        );
-        eprintln!(
-            "[screamer] Vision hotkey: {} (modifier=0x{:x}, device=0x{:x})",
-            vis_info.label, vis_info.modifier_flag, vis_info.device_flag
         );
 
         // NSEventMaskFlagsChanged = 1 << 12 = 4096
@@ -128,44 +99,10 @@ impl Hotkey {
                 on_dictation_release();
             }
 
-            // ── Vision hotkey ──
-            let vis_info = HOTKEYS
-                .get(vision_index.load(Ordering::Relaxed))
-                .unwrap_or(&HOTKEYS[2]);
-
-            let vis_modifier_down = (flags & vis_info.modifier_flag) != 0;
-            let vis_key_down = if vis_info.device_flag != 0 {
-                vis_modifier_down && (flags & vis_info.device_flag) != 0
-            } else {
-                vis_modifier_down
-            };
-
-            let vis_was = vision_pressed.load(Ordering::SeqCst);
-
-            if vis_key_down && !vis_was {
-                // Don't activate vision if dictation is already active
-                if !dictation_pressed.load(Ordering::SeqCst) {
-                    eprintln!(
-                        "[screamer] Vision {} PRESSED (flags=0x{:x})",
-                        vis_info.label, flags
-                    );
-                    vision_pressed.store(true, Ordering::SeqCst);
-                    on_vision_press();
-                }
-            } else if !vis_key_down && vis_was {
-                eprintln!(
-                    "[screamer] Vision {} RELEASED (flags=0x{:x})",
-                    vis_info.label, flags
-                );
-                vision_pressed.store(false, Ordering::SeqCst);
-                on_vision_release();
-            }
-
             // ── Fix hotkey (telemetry): tap to label the last dictation ──
             let fix_idx = fix_index.load(Ordering::Relaxed);
             if let Some(fix_info) = HOTKEYS.get(fix_idx) {
-                let taken = fix_idx == dictation_index.load(Ordering::Relaxed)
-                    || fix_idx == vision_index.load(Ordering::Relaxed);
+                let taken = fix_idx == dictation_index.load(Ordering::Relaxed);
 
                 let fix_modifier_down = (flags & fix_info.modifier_flag) != 0;
                 let fix_key_down = if fix_info.device_flag != 0 {
@@ -177,10 +114,7 @@ impl Hotkey {
                 let fix_was = fix_pressed.load(Ordering::SeqCst);
 
                 if fix_key_down && !fix_was {
-                    if !taken
-                        && !dictation_pressed.load(Ordering::SeqCst)
-                        && !vision_pressed.load(Ordering::SeqCst)
-                    {
+                    if !taken && !dictation_pressed.load(Ordering::SeqCst) {
                         fix_pressed.store(true, Ordering::SeqCst);
                     }
                 } else if !fix_key_down && fix_was {

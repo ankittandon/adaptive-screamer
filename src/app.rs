@@ -1,16 +1,10 @@
-use crate::ambient_controller::AmbientController;
-use crate::config::{AppAppearance, Config, SummaryBackendPreference, HOTKEYS, MODELS, POSITIONS};
-use crate::diarization::default_diarization_engine;
-use crate::highlight::HighlightOverlay;
+use crate::config::{AppAppearance, Config, HOTKEYS, MODELS, POSITIONS};
 use crate::logging;
-use crate::main_window::MainWindow;
 use crate::overlay::{Overlay, WAVEFORM_BINS};
 use crate::permission_window::PermissionWindow;
 use crate::permissions;
 use crate::recorder::Recorder;
-use crate::session_store::SessionStore;
 use crate::sound::SoundPlayer;
-use crate::summary_backend::SummaryBackendRegistry;
 use crate::theme;
 use objc2::msg_send;
 use objc2::rc::Retained;
@@ -47,7 +41,6 @@ thread_local! {
     static HOTKEY_MONITOR: RefCell<Option<Rc<crate::hotkey::Hotkey>>> = const { RefCell::new(None) };
     static LIVE_TRANSCRIPTION_ENABLED: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
     static SOUND_EFFECTS_ENABLED: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
-    static MAIN_WINDOW: RefCell<Option<Rc<MainWindow>>> = const { RefCell::new(None) };
     static ACCESSIBILITY_WINDOW: RefCell<Option<Rc<PermissionWindow>>> = const { RefCell::new(None) };
     static ACCESSIBILITY_GRANTED: Cell<bool> = const { Cell::new(false) };
     static ACCESSIBILITY_HELPER_DISMISSED: Cell<bool> = const { Cell::new(false) };
@@ -55,27 +48,20 @@ thread_local! {
 }
 
 static MICROPHONE_PERMISSION_GUIDANCE_SHOWN: AtomicBool = AtomicBool::new(false);
-static AMBIENT_CONTROLLER: OnceLock<Arc<AmbientController>> = OnceLock::new();
 
 pub struct App {
     _status_item: Retained<NSStatusItem>,
     overlay: Rc<RefCell<Overlay>>,
-    main_window: Rc<MainWindow>,
     hotkey: Rc<crate::hotkey::Hotkey>,
     recorder: Arc<Recorder>,
     sound_player: Rc<SoundPlayer>,
     transcriber: Arc<Transcriber>,
-    ambient_controller: Arc<AmbientController>,
-    _session_store: Arc<SessionStore>,
-    _summary_registry: Arc<SummaryBackendRegistry>,
     is_recording: Arc<AtomicBool>,
     live_transcription_enabled: Arc<AtomicBool>,
     sound_effects_enabled: Arc<AtomicBool>,
     live_transcript: Arc<Mutex<String>>,
     pending_completion_sound: Arc<AtomicBool>,
     recording_session: Arc<AtomicU64>,
-    vision_overlay_state: Arc<Mutex<crate::overlay::VisionOverlayState>>,
-    highlight_overlay: Rc<RefCell<HighlightOverlay>>,
 }
 
 pub struct AppInitError {
@@ -94,15 +80,6 @@ pub fn install_main_menu(mtm: MainThreadMarker, app: &NSApplication) {
         let app_menu = NSMenu::new(mtm);
         app_menu.setTitle(&NSString::from_str("Screamer"));
 
-        let settings_item = NSMenuItem::new(mtm);
-        settings_item.setTitle(&NSString::from_str("Settings..."));
-        let _: () = msg_send![&*settings_item, setTarget: handler];
-        settings_item.setAction(Some(sel!(showSettings:)));
-        settings_item.setKeyEquivalent(&NSString::from_str(","));
-        app_menu.addItem(&settings_item);
-
-        app_menu.addItem(&NSMenuItem::separatorItem(mtm));
-
         let quit_item = NSMenuItem::new(mtm);
         quit_item.setTitle(&NSString::from_str("Quit Screamer"));
         quit_item.setAction(Some(sel!(terminate:)));
@@ -115,34 +92,6 @@ pub fn install_main_menu(mtm: MainThreadMarker, app: &NSApplication) {
 
         let _: () = msg_send![app, setDelegate: handler];
     }
-}
-
-pub fn show_settings_window() {
-    let Some(mtm) = MainThreadMarker::new() else {
-        return;
-    };
-
-    let app = NSApplication::sharedApplication(mtm);
-    app.activate();
-    MAIN_WINDOW.with(|cell| {
-        if let Some(window) = cell.borrow().as_ref() {
-            window.show_settings();
-        }
-    });
-}
-
-pub fn show_main_window() {
-    let Some(mtm) = MainThreadMarker::new() else {
-        return;
-    };
-
-    let app = NSApplication::sharedApplication(mtm);
-    app.activate();
-    MAIN_WINDOW.with(|cell| {
-        if let Some(window) = cell.borrow().as_ref() {
-            window.show_home();
-        }
-    });
 }
 
 pub fn show_accessibility_window() {
@@ -224,13 +173,11 @@ fn show_missing_microphone_permission_guidance() {
         return;
     }
 
-    show_settings_window();
-
     if let Some(mtm) = MainThreadMarker::new() {
         App::show_alert(
             mtm,
             "Microphone Permission Required",
-            "Screamer can't record until microphone access is enabled. Open Screamer Settings and click Microphone to jump to System Settings, then try recording again.",
+            "Screamer can't record until microphone access is enabled. Open System Settings → Privacy & Security → Microphone, enable Screamer, then try recording again.",
         );
     }
 }
@@ -242,7 +189,6 @@ fn dismiss_accessibility_helper() {
             window.hide();
         }
     });
-    show_settings_window();
 }
 
 // ─── ObjC Menu Handler ───────────────────────────────────────────────────────
@@ -276,18 +222,6 @@ fn menu_handler_class() -> &'static AnyClass {
                 toggle_sound_effects_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
             );
             builder.add_method(
-                sel!(showSettings:),
-                show_settings_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(showHomePage:),
-                show_home_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(showSettingsPage:),
-                show_settings_page_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
                 sel!(openAccessibilitySettings:),
                 open_accessibility_settings_action
                     as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
@@ -311,11 +245,6 @@ fn menu_handler_class() -> &'static AnyClass {
                 select_hotkey_popup_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
             );
             builder.add_method(
-                sel!(selectVisionHotkeyPopup:),
-                select_vision_hotkey_popup_action
-                    as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
                 sel!(selectPositionPopup:),
                 select_position_popup_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
             );
@@ -330,56 +259,6 @@ fn menu_handler_class() -> &'static AnyClass {
             builder.add_method(
                 sel!(setSoundEffectsEnabled:),
                 set_sound_effects_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(setAmbientMicrophoneEnabled:),
-                set_ambient_microphone_enabled_action
-                    as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(setAmbientSystemAudioEnabled:),
-                set_ambient_system_audio_enabled_action
-                    as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(selectSummaryModelPopup:),
-                select_summary_model_popup_action
-                    as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(selectAmbientFinalBackendPopup:),
-                select_ambient_final_backend_popup_action
-                    as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(startAmbientSession:),
-                start_ambient_session_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(openOrStartAmbientSession:),
-                open_or_start_ambient_session_action
-                    as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(stopAmbientSession:),
-                stop_ambient_session_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(setSummaryTemplate:),
-                set_summary_template_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(openSessionFromSidebar:),
-                open_session_from_sidebar_action
-                    as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(openSessionFromHome:),
-                open_session_from_home_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
-            );
-            builder.add_method(
-                sel!(reprocessSession:),
-                reprocess_session_action as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject),
             );
             builder.add_method(
                 sel!(applicationShouldHandleReopen:hasVisibleWindows:),
@@ -448,18 +327,6 @@ extern "C" fn toggle_sound_effects_action(
     set_sound_effects_enabled(enabled);
 }
 
-extern "C" fn show_settings_action(_this: *mut AnyObject, _sel: Sel, _sender: *mut AnyObject) {
-    show_settings_window();
-}
-
-extern "C" fn show_home_action(_this: *mut AnyObject, _sel: Sel, _sender: *mut AnyObject) {
-    show_main_window();
-}
-
-extern "C" fn show_settings_page_action(_this: *mut AnyObject, _sel: Sel, _sender: *mut AnyObject) {
-    show_settings_window();
-}
-
 extern "C" fn open_accessibility_settings_action(
     _this: *mut AnyObject,
     _sel: Sel,
@@ -492,15 +359,6 @@ extern "C" fn select_model_popup_action(_this: *mut AnyObject, _sel: Sel, sender
 extern "C" fn select_hotkey_popup_action(_this: *mut AnyObject, _sel: Sel, sender: *mut AnyObject) {
     let index: isize = unsafe { msg_send![sender, indexOfSelectedItem] };
     apply_hotkey_selection(index as usize);
-}
-
-extern "C" fn select_vision_hotkey_popup_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    sender: *mut AnyObject,
-) {
-    let index: isize = unsafe { msg_send![sender, indexOfSelectedItem] };
-    apply_vision_hotkey_selection(index as usize);
 }
 
 extern "C" fn select_position_popup_action(
@@ -536,104 +394,12 @@ extern "C" fn set_sound_effects_action(_this: *mut AnyObject, _sel: Sel, sender:
     set_sound_effects_enabled(state != 0);
 }
 
-extern "C" fn set_ambient_microphone_enabled_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    sender: *mut AnyObject,
-) {
-    let state: isize = unsafe { msg_send![sender, state] };
-    set_ambient_microphone_enabled(state != 0);
-}
-
-extern "C" fn set_ambient_system_audio_enabled_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    sender: *mut AnyObject,
-) {
-    let state: isize = unsafe { msg_send![sender, state] };
-    set_ambient_system_audio_enabled(state != 0);
-}
-
-extern "C" fn select_summary_model_popup_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    sender: *mut AnyObject,
-) {
-    let index: isize = unsafe { msg_send![sender, indexOfSelectedItem] };
-    apply_summary_model_selection(index as usize);
-}
-
-extern "C" fn select_ambient_final_backend_popup_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    sender: *mut AnyObject,
-) {
-    let index: isize = unsafe { msg_send![sender, indexOfSelectedItem] };
-    apply_ambient_final_backend_selection(index as usize);
-}
-
-extern "C" fn start_ambient_session_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    _sender: *mut AnyObject,
-) {
-    start_ambient_session();
-}
-
-extern "C" fn open_or_start_ambient_session_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    _sender: *mut AnyObject,
-) {
-    open_or_start_ambient_session();
-}
-
-extern "C" fn stop_ambient_session_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    _sender: *mut AnyObject,
-) {
-    stop_ambient_session();
-}
-
-extern "C" fn set_summary_template_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    sender: *mut AnyObject,
-) {
-    let index: isize = unsafe { msg_send![sender, indexOfSelectedItem] };
-    set_summary_template(index as usize);
-}
-
-extern "C" fn reprocess_session_action(_this: *mut AnyObject, _sel: Sel, _sender: *mut AnyObject) {
-    reprocess_current_session();
-}
-
-extern "C" fn open_session_from_sidebar_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    sender: *mut AnyObject,
-) {
-    let tag: isize = unsafe { msg_send![sender, tag] };
-    open_session_from_sidebar_index(tag as usize);
-}
-
-extern "C" fn open_session_from_home_action(
-    _this: *mut AnyObject,
-    _sel: Sel,
-    sender: *mut AnyObject,
-) {
-    let tag: isize = unsafe { msg_send![sender, tag] };
-    open_session_from_home_index(tag as usize);
-}
-
 extern "C" fn application_should_handle_reopen(
     _this: *mut AnyObject,
     _sel: Sel,
     _sender: *mut AnyObject,
     _has_visible_windows: Bool,
 ) -> Bool {
-    show_main_window();
     Bool::YES
 }
 
@@ -711,34 +477,6 @@ fn apply_hotkey_selection(index: usize) {
     HOTKEY_MONITOR.with(|cell| {
         if let Some(hotkey) = cell.borrow().as_ref() {
             hotkey.set_hotkey(hotkey_info.id);
-        }
-    });
-
-    if let Some(mtm) = MainThreadMarker::new() {
-        rebuild_status_menu(mtm);
-    }
-    sync_settings_window(&config);
-}
-
-fn apply_vision_hotkey_selection(index: usize) {
-    let Some(hotkey_info) = HOTKEYS.get(index) else {
-        sync_settings_window(&Config::load());
-        return;
-    };
-
-    let mut config = Config::load();
-    if config.vision_hotkey == hotkey_info.id {
-        sync_settings_window(&config);
-        return;
-    }
-
-    eprintln!("[screamer] Vision hotkey selected: {}", hotkey_info.id);
-    config.vision_hotkey = hotkey_info.id.to_string();
-    config.save();
-
-    HOTKEY_MONITOR.with(|cell| {
-        if let Some(hotkey) = cell.borrow().as_ref() {
-            hotkey.set_vision_hotkey(hotkey_info.id);
         }
     });
 
@@ -840,192 +578,9 @@ fn set_sound_effects_enabled(enabled: bool) {
     );
 }
 
-fn set_ambient_microphone_enabled(enabled: bool) {
-    let mut config = Config::load();
-    config.ambient_microphone = enabled;
-    config.save();
-    sync_settings_window(&config);
-}
-
-fn set_ambient_system_audio_enabled(enabled: bool) {
-    let mut config = Config::load();
-    config.ambient_system_audio = enabled;
-    config.save();
-    sync_settings_window(&config);
-}
-
-fn apply_ambient_final_backend_selection(index: usize) {
-    let backend = MAIN_WINDOW.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .and_then(|window| window.ambient_final_backend_for_index(index))
-    });
-    let Some(backend) = backend else {
-        sync_settings_window(&Config::load());
-        return;
-    };
-
-    let mut config = Config::load();
-    if config.ambient_final_backend == backend {
-        sync_settings_window(&config);
-        return;
-    }
-
-    config.ambient_final_backend = backend;
-    config.save();
-    sync_settings_window(&config);
-
-    eprintln!(
-        "[screamer] Ambient final backend set to {}",
-        config.ambient_final_backend_label()
-    );
-}
-
-fn apply_summary_model_selection(index: usize) {
-    let option = MAIN_WINDOW.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .and_then(|window| window.summary_option_for_index(index))
-    });
-    let Some(option) = option else {
-        sync_settings_window(&Config::load());
-        return;
-    };
-
-    let mut config = Config::load();
-    config.summary_backend = option.backend;
-    if matches!(option.backend, SummaryBackendPreference::Ollama) {
-        config.summary_ollama_model = option.value;
-    }
-    config.save();
-    sync_settings_window(&config);
-}
-
-fn start_ambient_session() {
-    let Some(controller) = AMBIENT_CONTROLLER.get() else {
-        return;
-    };
-    let config = Config::load();
-    if config.ambient_microphone {
-        match permissions::prepare_microphone_permission() {
-            permissions::MicrophonePermissionOutcome::Granted => {}
-            permissions::MicrophonePermissionOutcome::Prompted => {
-                eprintln!(
-                    "[screamer] Requested microphone permission before ambient session start"
-                );
-                return;
-            }
-            permissions::MicrophonePermissionOutcome::Denied => {
-                show_missing_microphone_permission_guidance();
-                return;
-            }
-        }
-    }
-    let maybe_result = controller.start_session(&config);
-
-    match maybe_result {
-        Ok(session_id) => {
-            MAIN_WINDOW.with(|cell| {
-                if let Some(window) = cell.borrow().as_ref() {
-                    window.show_session(session_id);
-                }
-            });
-        }
-        Err(err) => {
-            if let Some(mtm) = MainThreadMarker::new() {
-                App::show_alert(mtm, "Unable to start notetaker", &err);
-            }
-        }
-    }
-}
-
-fn open_or_start_ambient_session() {
-    let active_session_id = AMBIENT_CONTROLLER
-        .get()
-        .and_then(|controller| controller.active_snapshot().map(|snapshot| snapshot.id));
-
-    if let Some(session_id) = active_session_id {
-        MAIN_WINDOW.with(|cell| {
-            if let Some(window) = cell.borrow().as_ref() {
-                window.show_session(session_id);
-            }
-        });
-        return;
-    }
-
-    start_ambient_session();
-}
-
-fn stop_ambient_session() {
-    let Some(controller) = AMBIENT_CONTROLLER.get() else {
-        return;
-    };
-    let maybe_result = controller.stop_session();
-    if let Err(err) = maybe_result {
-        if let Some(mtm) = MainThreadMarker::new() {
-            App::show_alert(mtm, "Unable to stop notetaker", &err);
-        }
-    }
-}
-
-fn reprocess_current_session() {
-    let session_id = MAIN_WINDOW.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .map(|window| window.current_session_id())
-    });
-    let Some(session_id) = session_id else {
-        return;
-    };
-    if session_id == 0 {
-        return;
-    }
-    let Some(controller) = AMBIENT_CONTROLLER.get() else {
-        return;
-    };
-    let config = Config::load();
-    if let Err(err) = controller.reprocess_session(session_id, &config) {
-        if let Some(mtm) = MainThreadMarker::new() {
-            App::show_alert(mtm, "Unable to reprocess session", &err);
-        }
-    }
-}
-
-fn set_summary_template(index: usize) {
-    MAIN_WINDOW.with(|cell| {
-        if let Some(window) = cell.borrow().as_ref() {
-            window.set_summary_template(index);
-        }
-    });
-}
-
-fn open_session_from_sidebar_index(index: usize) {
-    MAIN_WINDOW.with(|cell| {
-        if let Some(window) = cell.borrow().as_ref() {
-            if let Some(session_id) = window.session_id_for_sidebar_index(index) {
-                window.show_session(session_id);
-            }
-        }
-    });
-}
-
-fn open_session_from_home_index(index: usize) {
-    MAIN_WINDOW.with(|cell| {
-        if let Some(window) = cell.borrow().as_ref() {
-            if let Some(session_id) = window.session_id_for_home_index(index) {
-                window.show_session(session_id);
-            }
-        }
-    });
-}
-
-fn sync_settings_window(config: &Config) {
-    MAIN_WINDOW.with(|cell| {
-        if let Some(window) = cell.borrow().as_ref() {
-            window.sync_config(config);
-        }
-    });
-}
+/// No-op shim. The settings window was removed; configuration is edited via the
+/// menu-bar menu and config.json. Kept so the menu actions don't need to special-case it.
+fn sync_settings_window(_config: &Config) {}
 
 fn rebuild_status_menu(mtm: MainThreadMarker) {
     let config = Config::load();
@@ -1137,21 +692,6 @@ impl App {
         config: Config,
         transcriber: Arc<Transcriber>,
     ) -> Result<Self, AppInitError> {
-        let session_store =
-            Arc::new(
-                SessionStore::open_default().map_err(|message| AppInitError {
-                    title: "Session Store Error",
-                    message,
-                })?,
-            );
-        let summary_registry = Arc::new(SummaryBackendRegistry::detect());
-        let ambient_controller = Arc::new(AmbientController::new(
-            session_store.clone(),
-            transcriber.clone(),
-            summary_registry.clone(),
-            default_diarization_engine(),
-        ));
-        let _ = AMBIENT_CONTROLLER.set(ambient_controller.clone());
         let recorder = Arc::new(Recorder::new());
         theme::apply_app_appearance(mtm, config.appearance);
         let overlay = Rc::new(RefCell::new(Overlay::new(
@@ -1159,7 +699,6 @@ impl App {
             config.overlay_position,
             config.appearance,
         )));
-        let highlight_overlay = Rc::new(RefCell::new(HighlightOverlay::new(mtm)));
         let hotkey = Rc::new(crate::hotkey::Hotkey::new(&config));
         let sound_player = Rc::new(SoundPlayer::new(mtm));
 
@@ -1201,18 +740,6 @@ impl App {
             *cell.borrow_mut() = Some(status_item.clone());
         });
 
-        let main_window = MainWindow::new(
-            mtm,
-            &config,
-            get_menu_handler(),
-            session_store.clone(),
-            ambient_controller.clone(),
-            summary_registry.clone(),
-        );
-        MAIN_WINDOW.with(|cell| {
-            *cell.borrow_mut() = Some(main_window.clone());
-        });
-
         let accessibility_window = PermissionWindow::new(mtm, get_menu_handler());
         ACCESSIBILITY_WINDOW.with(|cell| {
             *cell.borrow_mut() = Some(accessibility_window);
@@ -1230,22 +757,16 @@ impl App {
         Ok(Self {
             _status_item: status_item,
             overlay,
-            main_window,
             hotkey,
             recorder,
             sound_player,
             transcriber,
-            ambient_controller,
-            _session_store: session_store,
-            _summary_registry: summary_registry,
             is_recording: Arc::new(AtomicBool::new(false)),
             live_transcription_enabled,
             sound_effects_enabled,
             live_transcript: Arc::new(Mutex::new(String::new())),
             pending_completion_sound: Arc::new(AtomicBool::new(false)),
             recording_session: Arc::new(AtomicU64::new(0)),
-            vision_overlay_state: Arc::new(Mutex::new(crate::overlay::VisionOverlayState::Hidden)),
-            highlight_overlay,
         })
     }
 
@@ -1265,12 +786,6 @@ impl App {
             status_line.setTitle(&NSString::from_str(status_title));
             status_line.setEnabled(false);
             menu.addItem(&status_line);
-
-            let open_item = NSMenuItem::new(mtm);
-            open_item.setTitle(&NSString::from_str("Open Screamer"));
-            let _: () = msg_send![&*open_item, setTarget: handler];
-            open_item.setAction(Some(sel!(showHomePage:)));
-            menu.addItem(&open_item);
 
             if !accessibility_granted {
                 let access_item = NSMenuItem::new(mtm);
@@ -1396,7 +911,6 @@ impl App {
         let hotkey = self.hotkey.clone();
 
         // ── Shared state clones for dictation ──
-        let ambient_controller = self.ambient_controller.clone();
         let sound_player_dict_press = self.sound_player.clone();
         let is_rec_dict_press = self.is_recording.clone();
         let is_rec_dict_release = self.is_recording.clone();
@@ -1411,28 +925,6 @@ impl App {
         let live_transcript_dict_release = self.live_transcript.clone();
         let pending_sound_dict = self.pending_completion_sound.clone();
         let session_dict = self.recording_session.clone();
-        let vision_state_dict = self.vision_overlay_state.clone();
-
-        // ── Shared state clones for vision ──
-        let is_rec_vis_press = self.is_recording.clone();
-        let is_rec_vis_release = self.is_recording.clone();
-        let rec_vis_press = self.recorder.clone();
-        let rec_vis_release = self.recorder.clone();
-        let trans_vis_press = self.transcriber.clone();
-        let trans_vis_release = self.transcriber.clone();
-        let live_enabled_vis = self.live_transcription_enabled.clone();
-        let sfx_vis_press = self.sound_effects_enabled.clone();
-        let sfx_vis_release = self.sound_effects_enabled.clone();
-        let sound_player_vis_press = self.sound_player.clone();
-        let live_transcript_vis_press = self.live_transcript.clone();
-        let live_transcript_vis_release = self.live_transcript.clone();
-        let pending_sound_vis = self.pending_completion_sound.clone();
-        let session_vis = self.recording_session.clone();
-        let vision_state_vis_press = self.vision_overlay_state.clone();
-        let vision_state_vis_release = self.vision_overlay_state.clone();
-        let vision_screenshot: Arc<Mutex<Option<crate::screenshot::CapturedScreen>>> =
-            Arc::new(Mutex::new(None));
-        let vision_screenshot_release = vision_screenshot.clone();
 
         // ── Opt-in telemetry (off unless telemetry_enabled is set in config.json) ──
         let telemetry = crate::telemetry::init(&Config::load());
@@ -1445,15 +937,6 @@ impl App {
             mtm,
             // ── Dictation press ──
             move || {
-                crate::speech::stop();
-                // Clear any previous vision response
-                if let Ok(mut vs) = vision_state_dict.lock() {
-                    *vs = crate::overlay::VisionOverlayState::Hidden;
-                }
-                if ambient_controller.active_snapshot().is_some() {
-                    eprintln!("[screamer] Ignoring dictation hotkey while ambient session is active");
-                    return;
-                }
                 if is_rec_dict_press
                     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
@@ -1601,265 +1084,6 @@ impl App {
                     });
                 }
             },
-            // ── Vision press: capture screenshot, then start recording ──
-            move || {
-                crate::speech::stop();
-                // Clear any previous vision response
-                if let Ok(mut vs) = vision_state_vis_press.lock() {
-                    *vs = crate::overlay::VisionOverlayState::Hidden;
-                }
-                // Capture screenshot immediately
-                match crate::screenshot::capture_screen() {
-                    Ok(screenshot) => {
-                        eprintln!(
-                            "[screamer] Vision screenshot captured: {}",
-                            screenshot.path.display()
-                        );
-                        logging::log_flow_event(
-                            "vision",
-                            "capture",
-                            &format!(
-                                "path={} bounds=({:.1}, {:.1}, {:.1}, {:.1})",
-                                screenshot.path.display(),
-                                screenshot.bounds.x,
-                                screenshot.bounds.y,
-                                screenshot.bounds.width,
-                                screenshot.bounds.height
-                            ),
-                        );
-                        if let Ok(mut ss) = vision_screenshot.lock() {
-                            if let Some(old) = ss.take() {
-                                let _ = std::fs::remove_file(&old.path);
-                            }
-                            *ss = Some(screenshot);
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("[screamer] Vision screenshot failed: {err}");
-                        return;
-                    }
-                }
-                crate::speech::warm_up();
-
-                let clear_vision_screenshot = || {
-                    if let Ok(mut ss) = vision_screenshot.lock() {
-                        if let Some(screenshot) = ss.take() {
-                            let _ = std::fs::remove_file(screenshot.path);
-                        }
-                    }
-                };
-
-                // Start recording (same flow as dictation)
-                if is_rec_vis_press
-                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                    .is_ok()
-                {
-                    match permissions::prepare_microphone_permission() {
-                        permissions::MicrophonePermissionOutcome::Granted => {}
-                        permissions::MicrophonePermissionOutcome::Prompted => {
-                            is_rec_vis_press.store(false, Ordering::SeqCst);
-                            clear_vision_screenshot();
-                            return;
-                        }
-                        permissions::MicrophonePermissionOutcome::Denied => {
-                            is_rec_vis_press.store(false, Ordering::SeqCst);
-                            clear_vision_screenshot();
-                            show_missing_microphone_permission_guidance();
-                            return;
-                        }
-                    }
-
-                    let session = session_vis.fetch_add(1, Ordering::SeqCst) + 1;
-                    if let Ok(mut t) = live_transcript_vis_press.lock() { t.clear(); }
-                    rec_vis_press.reset_buffers();
-
-                    if sfx_vis_press.load(Ordering::Relaxed) {
-                        sound_player_vis_press.play_recording_start();
-                    }
-                    start_recording_capture(
-                        rec_vis_press.clone(),
-                        trans_vis_press.clone(),
-                        is_rec_vis_press.clone(),
-                        live_enabled_vis.clone(),
-                        live_transcript_vis_press.clone(),
-                        session_vis.clone(),
-                        session,
-                    );
-                    eprintln!("[screamer] Vision recording armed");
-                } else {
-                    clear_vision_screenshot();
-                }
-            },
-            // ── Vision release: stop recording, transcribe, send to LLM ──
-            move || {
-                if is_rec_vis_release
-                    .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
-                    .is_ok()
-                {
-                    let release_t0 = std::time::Instant::now();
-                    let samples = rec_vis_release.stop();
-                    if let Ok(mut t) = live_transcript_vis_release.lock() { t.clear(); }
-                    eprintln!("[screamer] Vision recording stopped, {} samples", samples.len());
-
-                    let screenshot = vision_screenshot_release
-                        .lock()
-                        .ok()
-                        .and_then(|mut ss| ss.take());
-
-                    let transcribe_window = match prepare_final_transcription(&samples) {
-                        FinalTranscriptionAction::SkipSilence => {
-                            eprintln!("[screamer] Vision recording was silence, skipping");
-                            if sfx_vis_release.load(Ordering::Relaxed) {
-                                pending_sound_vis.store(true, Ordering::SeqCst);
-                            }
-                            if let Some(screenshot) = screenshot.as_ref() {
-                                let _ = std::fs::remove_file(&screenshot.path);
-                            }
-                            if let Ok(mut vs) = vision_state_vis_release.lock() {
-                                *vs = crate::overlay::VisionOverlayState::Hidden;
-                            }
-                            return;
-                        }
-                        FinalTranscriptionAction::SkipTooShort { trimmed_len } => {
-                            eprintln!("[screamer] Vision recording too short ({} samples), skipping", trimmed_len);
-                            if sfx_vis_release.load(Ordering::Relaxed) {
-                                pending_sound_vis.store(true, Ordering::SeqCst);
-                            }
-                            if let Some(screenshot) = screenshot.as_ref() {
-                                let _ = std::fs::remove_file(&screenshot.path);
-                            }
-                            if let Ok(mut vs) = vision_state_vis_release.lock() {
-                                *vs = crate::overlay::VisionOverlayState::Hidden;
-                            }
-                            return;
-                        }
-                        FinalTranscriptionAction::Ready(window) => {
-                            let trimmed_len = window.range.end - window.range.start;
-                            if trimmed_len != samples.len() {
-                                eprintln!("[screamer] Trimmed silence: {} -> {} samples", samples.len(), trimmed_len);
-                            }
-                            window
-                        }
-                    };
-
-                    // Set loading state
-                    if let Ok(mut vs) = vision_state_vis_release.lock() {
-                        *vs = crate::overlay::VisionOverlayState::Loading;
-                    }
-
-                    let t = trans_vis_release.clone();
-                    let pending_sound = pending_sound_vis.clone();
-                    let sfx = sfx_vis_release.clone();
-                    let vision_state = vision_state_vis_release.clone();
-
-                    std::thread::spawn(move || {
-                        let mut should_play_completion_sound = true;
-                        match t.transcribe_profiled(&samples[transcribe_window.range]) {
-                            Ok(result) if !result.text.is_empty() => {
-                                eprintln!(
-                                    "[screamer] Vision transcribed in {}ms ({} chars)",
-                                    result.profile.total.as_millis(),
-                                    result.text.chars().count()
-                                );
-                                logging::log_transcript("Vision transcript", &result.text);
-
-                                if let Some(screenshot) = screenshot.as_ref() {
-                                    eprintln!("[screamer] Vision: asking model about screenshot...");
-                                    let vision_t0 = std::time::Instant::now();
-                                    logging::log_flow_event(
-                                        "vision",
-                                        "app_dispatch",
-                                        &format!(
-                                            "screenshot={} transcript_chars={}",
-                                            screenshot.path.display(),
-                                            result.text.chars().count()
-                                        ),
-                                    );
-                                    match crate::vision::ask_about_screen(
-                                        &result.text,
-                                        &screenshot.path,
-                                    ) {
-                                        Ok(vision_result) => {
-                                            eprintln!(
-                                                "[screamer] Vision response in {}ms ({} chars):\n{}",
-                                                vision_t0.elapsed().as_millis(),
-                                                vision_result.text.len(),
-                                                vision_result.text
-                                            );
-                                            logging::log_flow_event(
-                                                "vision",
-                                                "app_result",
-                                                &format!(
-                                                    "latency_ms={} spoken_chars={} highlight={}",
-                                                    vision_t0.elapsed().as_millis(),
-                                                    vision_result.text.chars().count(),
-                                                    vision_result
-                                                        .highlight
-                                                        .as_ref()
-                                                        .map(|point| point.describe())
-                                                        .unwrap_or_else(|| "NONE".to_string())
-                                                ),
-                                            );
-                                            match crate::speech::speak(&vision_result.text) {
-                                                Ok(()) => {
-                                                    should_play_completion_sound = false;
-                                                }
-                                                Err(err) => {
-                                                    eprintln!("[screamer] Vision speech error: {err}");
-                                                }
-                                            }
-                                            if let Ok(mut vs) = vision_state.lock() {
-                                                let highlight = vision_result.highlight.map(|point| {
-                                                    crate::highlight::HighlightTarget {
-                                                        point,
-                                                        capture_bounds: screenshot.bounds,
-                                                    }
-                                                });
-                                                *vs = crate::overlay::VisionOverlayState::Response(
-                                                    vision_result.text,
-                                                    highlight,
-                                                );
-                                            }
-                                        }
-                                        Err(err) => {
-                                            eprintln!("[screamer] Vision model error: {err}");
-                                            if let Ok(mut vs) = vision_state.lock() {
-                                                *vs = crate::overlay::VisionOverlayState::Error(err);
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    eprintln!("[screamer] Vision release but no screenshot found");
-                                    if let Ok(mut vs) = vision_state.lock() {
-                                        *vs = crate::overlay::VisionOverlayState::Hidden;
-                                    }
-                                }
-                            }
-                            Ok(_) => {
-                                eprintln!("[screamer] Vision: empty transcription, skipping");
-                                if let Ok(mut vs) = vision_state.lock() {
-                                    *vs = crate::overlay::VisionOverlayState::Hidden;
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("[screamer] Vision transcription error: {}", e);
-                                if let Ok(mut vs) = vision_state.lock() {
-                                    *vs = crate::overlay::VisionOverlayState::Error(
-                                        format!("Transcription failed: {e}"),
-                                    );
-                                }
-                            }
-                        }
-
-                        if should_play_completion_sound && sfx.load(Ordering::Relaxed) {
-                            pending_sound.store(true, Ordering::SeqCst);
-                        }
-                        if let Some(screenshot) = screenshot {
-                            let _ = std::fs::remove_file(&screenshot.path);
-                        }
-                    });
-                }
-            },
             // ── Fix (telemetry): tap to label the last dictation with the selected text ──
             move || {
                 let Some(store) = telemetry_fix.clone() else {
@@ -1882,18 +1106,14 @@ impl App {
     }
 
     fn start_waveform_timer(&self) {
-        let main_window = self.main_window.clone();
-        let ambient_controller = self.ambient_controller.clone();
         let recorder = self.recorder.clone();
         let overlay = self.overlay.clone();
-        let highlight_overlay = self.highlight_overlay.clone();
         let sound_player = self.sound_player.clone();
         let is_recording = self.is_recording.clone();
         let live_transcription_enabled = self.live_transcription_enabled.clone();
         let sound_effects_enabled = self.sound_effects_enabled.clone();
         let live_transcript = self.live_transcript.clone();
         let pending_completion_sound = self.pending_completion_sound.clone();
-        let vision_overlay_state = self.vision_overlay_state.clone();
 
         unsafe {
             use objc2::ClassType;
@@ -1901,37 +1121,12 @@ impl App {
 
             let block = block2::RcBlock::new(move |_timer: *mut objc2::runtime::AnyObject| {
                 sync_accessibility_window();
-                ambient_controller.tick();
-                main_window.tick();
 
                 let recording = is_recording.load(Ordering::Relaxed);
                 if !sound_effects_enabled.load(Ordering::Relaxed) {
                     pending_completion_sound.store(false, Ordering::SeqCst);
                 } else if !recording && pending_completion_sound.swap(false, Ordering::SeqCst) {
                     sound_player.play_processing_done();
-                }
-
-                // Read the current vision state
-                let vision_state = vision_overlay_state
-                    .lock()
-                    .map(|vs| vs.clone())
-                    .unwrap_or(crate::overlay::VisionOverlayState::Hidden);
-
-                let vision_active =
-                    !matches!(vision_state, crate::overlay::VisionOverlayState::Hidden);
-
-                // Manage the screen highlight overlay
-                if let Ok(mut hl) = highlight_overlay.try_borrow_mut() {
-                    match &vision_state {
-                        crate::overlay::VisionOverlayState::Response(_, Some(target)) => {
-                            if !hl.is_visible() {
-                                hl.show(target);
-                            }
-                        }
-                        _ => {
-                            hl.hide();
-                        }
-                    }
                 }
 
                 if let Ok(mut ov) = overlay.try_borrow_mut() {
@@ -1950,14 +1145,6 @@ impl App {
                         };
                         ov.update_waveform(&waveform);
                         ov.update_transcript(&transcript);
-                        // Sync vision state to overlay
-                        ov.set_vision_state(vision_state);
-                    } else if vision_active {
-                        // Keep overlay visible while vision is loading/showing response
-                        if !ov.is_visible() {
-                            ov.show();
-                        }
-                        ov.set_vision_state(vision_state);
                     } else if ov.is_visible() {
                         ov.hide();
                     }

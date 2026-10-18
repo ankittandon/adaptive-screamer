@@ -1,31 +1,17 @@
-mod ambient_controller;
-mod ambient_final_pass;
-mod ambient_pipeline;
-mod ambient_whisperx;
 mod app;
 mod branding;
-mod bundled_llm;
 mod config;
-mod diarization;
-mod highlight;
 mod hotkey;
 mod loading;
 mod logging;
-mod main_window;
 mod overlay;
 mod paster;
 mod permission_window;
 mod permissions;
 mod recorder;
-mod screenshot;
-mod session_store;
-mod settings_window;
 mod sound;
-mod speech;
-mod summary_backend;
 mod telemetry;
 mod theme;
-mod vision;
 
 use objc2_app_kit::NSApplication;
 use objc2_foundation::MainThreadMarker;
@@ -110,7 +96,6 @@ fn main() {
     // Start hotkey listener and waveform timer
     app.start(mtm);
     loading.close();
-    app::show_main_window();
     if !permission_status.accessibility_granted && should_prompt_accessibility {
         app::show_accessibility_window();
     }

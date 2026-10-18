@@ -1,5 +1,4 @@
-use serde::de::{self, Deserializer};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
@@ -19,56 +18,6 @@ pub enum AppAppearance {
     #[default]
     Dark,
     Light,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SummaryBackendPreference {
-    #[default]
-    Bundled,
-    Ollama,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AmbientFinalBackendPreference {
-    #[default]
-    Native,
-    NativeDiarization,
-}
-
-impl AmbientFinalBackendPreference {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Native => "native",
-            Self::NativeDiarization => "native_diarization",
-        }
-    }
-}
-
-impl Serialize for AmbientFinalBackendPreference {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for AmbientFinalBackendPreference {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        match value.as_str() {
-            "native" => Ok(Self::Native),
-            "native_diarization" | "whisperx_hybrid" => Ok(Self::NativeDiarization),
-            other => Err(de::Error::unknown_variant(
-                other,
-                &["native", "native_diarization", "whisperx_hybrid"],
-            )),
-        }
-    }
 }
 
 pub struct PositionInfo {
@@ -107,22 +56,6 @@ pub const APPEARANCES: &[AppearanceInfo] = &[
     },
 ];
 
-pub struct AmbientFinalBackendInfo {
-    pub id: AmbientFinalBackendPreference,
-    pub label: &'static str,
-}
-
-pub const AMBIENT_FINAL_BACKENDS: &[AmbientFinalBackendInfo] = &[
-    AmbientFinalBackendInfo {
-        id: AmbientFinalBackendPreference::Native,
-        label: "Native",
-    },
-    AmbientFinalBackendInfo {
-        id: AmbientFinalBackendPreference::NativeDiarization,
-        label: "Native Diarization",
-    },
-];
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub model: String,
@@ -135,22 +68,10 @@ pub struct Config {
     pub live_transcription: bool,
     #[serde(default = "default_sound_effects")]
     pub sound_effects: bool,
-    #[serde(default = "default_ambient_microphone")]
-    pub ambient_microphone: bool,
-    #[serde(default = "default_ambient_system_audio")]
-    pub ambient_system_audio: bool,
-    #[serde(default)]
-    pub ambient_final_backend: AmbientFinalBackendPreference,
-    #[serde(default)]
-    pub summary_backend: SummaryBackendPreference,
-    #[serde(default = "default_summary_ollama_model")]
-    pub summary_ollama_model: String,
     #[serde(default = "default_show_accessibility_helper_on_launch")]
     pub show_accessibility_helper_on_launch: bool,
     #[serde(default)]
     pub accessibility_helper_dismissed: bool,
-    #[serde(default = "default_vision_hotkey")]
-    pub vision_hotkey: String,
     /// Opt-in: save each dictation's audio and text under
     /// `~/Library/Application Support/Screamer/telemetry` (never uploaded).
     #[serde(default)]
@@ -170,14 +91,8 @@ impl Default for Config {
             appearance: AppAppearance::default(),
             live_transcription: default_live_transcription(),
             sound_effects: default_sound_effects(),
-            ambient_microphone: default_ambient_microphone(),
-            ambient_system_audio: default_ambient_system_audio(),
-            ambient_final_backend: AmbientFinalBackendPreference::default(),
-            summary_backend: SummaryBackendPreference::default(),
-            summary_ollama_model: default_summary_ollama_model(),
             show_accessibility_helper_on_launch: default_show_accessibility_helper_on_launch(),
             accessibility_helper_dismissed: false,
-            vision_hotkey: default_vision_hotkey(),
             telemetry_enabled: false,
             fix_hotkey: String::new(),
         }
@@ -192,24 +107,8 @@ fn default_sound_effects() -> bool {
     true
 }
 
-fn default_ambient_microphone() -> bool {
-    true
-}
-
-fn default_ambient_system_audio() -> bool {
-    true
-}
-
-fn default_summary_ollama_model() -> String {
-    "gemma4:latest".to_string()
-}
-
 fn default_show_accessibility_helper_on_launch() -> bool {
     true
-}
-
-fn default_vision_hotkey() -> String {
-    "left_option".to_string()
 }
 
 pub struct ModelInfo {
@@ -357,17 +256,6 @@ impl Config {
         self.hotkey_info().label
     }
 
-    pub fn vision_hotkey_info(&self) -> &'static HotkeyInfo {
-        HOTKEYS
-            .iter()
-            .find(|h| h.id == self.vision_hotkey)
-            .unwrap_or(&HOTKEYS[2]) // default to left_option
-    }
-
-    pub fn vision_hotkey_label(&self) -> &'static str {
-        self.vision_hotkey_info().label
-    }
-
     pub fn position_label(&self) -> &'static str {
         POSITIONS
             .iter()
@@ -382,21 +270,6 @@ impl Config {
             .find(|appearance| appearance.id == self.appearance)
             .map(|appearance| appearance.label)
             .unwrap_or("Dark")
-    }
-
-    pub fn summary_backend_label(&self) -> &'static str {
-        match self.summary_backend {
-            SummaryBackendPreference::Bundled => "Bundled Gemma 3 1B",
-            SummaryBackendPreference::Ollama => "Local Ollama",
-        }
-    }
-
-    pub fn ambient_final_backend_label(&self) -> &'static str {
-        AMBIENT_FINAL_BACKENDS
-            .iter()
-            .find(|backend| backend.id == self.ambient_final_backend)
-            .map(|backend| backend.label)
-            .unwrap_or("Native")
     }
 
     fn normalized(mut self) -> Self {
@@ -417,18 +290,9 @@ impl Config {
             self.appearance = default.appearance;
         }
 
-        if self.summary_ollama_model.trim().is_empty() {
-            self.summary_ollama_model = default.summary_ollama_model;
-        }
-
-        if !HOTKEYS.iter().any(|hotkey| hotkey.id == self.vision_hotkey) {
-            self.vision_hotkey = default.vision_hotkey;
-        }
-
-        // The fix key must be a real key that is not already taken.
+        // The fix key must be a real key that is not already the dictation key.
         if !HOTKEYS.iter().any(|hotkey| hotkey.id == self.fix_hotkey)
             || self.fix_hotkey == self.hotkey
-            || self.fix_hotkey == self.vision_hotkey
         {
             self.fix_hotkey = default.fix_hotkey;
         }
@@ -450,17 +314,8 @@ mod tests {
         assert_eq!(config.appearance, AppAppearance::Dark);
         assert!(config.live_transcription);
         assert!(config.sound_effects);
-        assert!(config.ambient_microphone);
-        assert!(config.ambient_system_audio);
-        assert_eq!(
-            config.ambient_final_backend,
-            AmbientFinalBackendPreference::Native
-        );
-        assert_eq!(config.summary_backend, SummaryBackendPreference::Bundled);
-        assert_eq!(config.summary_ollama_model, "gemma4:latest");
         assert!(config.show_accessibility_helper_on_launch);
         assert!(!config.accessibility_helper_dismissed);
-        assert_eq!(config.vision_hotkey, "left_option");
         assert!(!config.telemetry_enabled);
         assert_eq!(config.fix_hotkey, "");
     }
@@ -474,14 +329,8 @@ mod tests {
             appearance: AppAppearance::Light,
             live_transcription: false,
             sound_effects: false,
-            ambient_microphone: false,
-            ambient_system_audio: false,
-            ambient_final_backend: AmbientFinalBackendPreference::NativeDiarization,
-            summary_backend: SummaryBackendPreference::Ollama,
-            summary_ollama_model: "gemma4:e2b".to_string(),
             show_accessibility_helper_on_launch: false,
             accessibility_helper_dismissed: true,
-            vision_hotkey: "right_option".to_string(),
             telemetry_enabled: true,
             fix_hotkey: "right_command".to_string(),
         };
@@ -493,63 +342,33 @@ mod tests {
         assert_eq!(parsed.appearance, AppAppearance::Light);
         assert!(!parsed.live_transcription);
         assert!(!parsed.sound_effects);
-        assert!(!parsed.ambient_microphone);
-        assert!(!parsed.ambient_system_audio);
-        assert_eq!(
-            parsed.ambient_final_backend,
-            AmbientFinalBackendPreference::NativeDiarization
-        );
-        assert_eq!(parsed.summary_backend, SummaryBackendPreference::Ollama);
-        assert_eq!(parsed.summary_ollama_model, "gemma4:e2b");
         assert!(!parsed.show_accessibility_helper_on_launch);
         assert!(parsed.accessibility_helper_dismissed);
-        assert_eq!(parsed.vision_hotkey, "right_option");
         assert!(parsed.telemetry_enabled);
         assert_eq!(parsed.fix_hotkey, "right_command");
     }
 
     #[test]
     fn config_backward_compat() {
-        // Old config without newer fields should deserialize with defaults.
-        let json = r#"{"model":"base","hotkey":"left_control"}"#;
+        // Old config, including fields from removed features, loads with the
+        // unknown fields ignored and missing ones defaulted.
+        let json = r#"{"model":"base","hotkey":"left_control","summary_backend":"bundled","vision_hotkey":"left_option","ambient_microphone":true}"#;
         let config: Config = serde_json::from_str(json).unwrap();
         assert_eq!(config.overlay_position, OverlayPosition::Center);
         assert_eq!(config.appearance, AppAppearance::Dark);
         assert!(config.live_transcription);
         assert!(config.sound_effects);
-        assert!(config.ambient_microphone);
-        assert!(config.ambient_system_audio);
-        assert_eq!(
-            config.ambient_final_backend,
-            AmbientFinalBackendPreference::Native
-        );
-        assert_eq!(config.summary_backend, SummaryBackendPreference::Bundled);
-        assert_eq!(config.summary_ollama_model, "gemma4:latest");
         assert!(config.show_accessibility_helper_on_launch);
         assert!(!config.accessibility_helper_dismissed);
-        assert_eq!(config.vision_hotkey, "left_option");
         assert!(!config.telemetry_enabled);
         assert_eq!(config.fix_hotkey, "");
     }
 
     #[test]
-    fn config_accepts_legacy_whisperx_backend_alias() {
-        let config: Config = serde_json::from_str(
-            r#"{"model":"base","hotkey":"left_control","ambient_final_backend":"whisperx_hybrid"}"#,
-        )
-        .unwrap();
-        assert_eq!(
-            config.ambient_final_backend,
-            AmbientFinalBackendPreference::NativeDiarization
-        );
-    }
-
-    #[test]
     fn hotkey_info_lookup() {
-        let config = Config::default();
         let config = Config {
             hotkey: "right_option".to_string(),
-            ..config
+            ..Config::default()
         };
         let info = config.hotkey_info();
         assert_eq!(info.id, "right_option");
@@ -615,8 +434,8 @@ mod tests {
     }
 
     #[test]
-    fn normalize_disables_a_fix_hotkey_that_is_unknown_or_already_used() {
-        for taken in ["nonexistent", "left_control", "left_option"] {
+    fn normalize_disables_a_fix_hotkey_that_is_unknown_or_the_dictation_key() {
+        for taken in ["nonexistent", "left_control"] {
             let config = Config {
                 fix_hotkey: taken.to_string(),
                 ..Config::default()
