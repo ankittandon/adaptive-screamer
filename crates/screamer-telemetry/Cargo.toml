@@ -1,0 +1,20 @@
+[package]
+name = "screamer-telemetry"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Opt-in local dictation telemetry: audio clips plus raw/corrected transcripts, used to fine-tune Whisper on your own voice."
+
+[lib]
+name = "screamer_telemetry"
+path = "src/lib.rs"
+
+[[bin]]
+name = "screamer-telemetry-export"
+path = "src/bin/export.rs"
+
+[dependencies]
+hound = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

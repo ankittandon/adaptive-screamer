@@ -2445,6 +2445,15 @@ name = "screamer-models"
 version = "1.0.0"
 
 [[package]]
+name = "screamer-telemetry"
+version = "1.0.0"
+dependencies = [
+ "hound",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "screamer-whisper"
 version = "1.0.0"
 dependencies = [
