@@ -131,6 +131,12 @@ static WATCH_GEN: AtomicU64 = AtomicU64::new(0);
 pub fn start_implicit_capture(store: Arc<TelemetryStore>) {
     let my_gen = WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
 
+    // Nudge Electron/Chromium apps (Claude, Slack, …) to expose their text to
+    // the Accessibility API; otherwise AXValue reads come back empty.
+    if let Some(pid) = frontmost_app_pid() {
+        crate::axtext::enable_accessibility_for_app(pid);
+    }
+
     std::thread::spawn(move || {
         let start = Instant::now();
         let mut last_nonempty: Option<String> = None;
@@ -138,7 +144,17 @@ pub fn start_implicit_capture(store: Arc<TelemetryStore>) {
         let mut empty_reads: u32 = 0;
 
         loop {
-            if WATCH_GEN.load(Ordering::SeqCst) != my_gen || start.elapsed() >= IMPLICIT_MAX_WATCH {
+            if WATCH_GEN.load(Ordering::SeqCst) != my_gen {
+                return;
+            }
+            if start.elapsed() >= IMPLICIT_MAX_WATCH {
+                if !saw_text {
+                    logging::log_flow_event(
+                        "telemetry",
+                        "implicit",
+                        "gave up: focused text field was never readable via Accessibility",
+                    );
+                }
                 return;
             }
             std::thread::sleep(IMPLICIT_POLL_INTERVAL);
@@ -148,6 +164,13 @@ pub fn start_implicit_capture(store: Arc<TelemetryStore>) {
 
             match crate::axtext::focused_text() {
                 Some(text) if !text.trim().is_empty() => {
+                    if !saw_text {
+                        logging::log_flow_event(
+                            "telemetry",
+                            "implicit",
+                            "watching focused field (readable via Accessibility)",
+                        );
+                    }
                     last_nonempty = Some(text);
                     saw_text = true;
                     empty_reads = 0;
@@ -177,6 +200,22 @@ pub fn start_implicit_capture(store: Arc<TelemetryStore>) {
             }
         }
     });
+}
+
+/// Process id of the frontmost app, used to enable its Accessibility tree.
+fn frontmost_app_pid() -> Option<i32> {
+    unsafe {
+        let workspace: *mut AnyObject = msg_send![objc2::class!(NSWorkspace), sharedWorkspace];
+        if workspace.is_null() {
+            return None;
+        }
+        let app: *mut AnyObject = msg_send![workspace, frontmostApplication];
+        if app.is_null() {
+            return None;
+        }
+        let pid: i32 = msg_send![app, processIdentifier];
+        Some(pid)
+    }
 }
 
 /// Bundle id (e.g. `com.apple.Notes`) of the frontmost app. Never a window title.

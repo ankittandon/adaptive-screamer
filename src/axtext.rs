@@ -7,17 +7,47 @@
 //! paste already need.
 
 use core_foundation::base::{CFType, CFTypeRef, TCFType};
+use core_foundation::boolean::CFBoolean;
 use core_foundation::string::{CFString, CFStringRef};
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     fn AXUIElementCreateSystemWide() -> CFTypeRef;
+    fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
     fn AXUIElementCopyAttributeValue(
         element: CFTypeRef,
         attribute: CFStringRef,
         value: *mut CFTypeRef,
     ) -> i32;
+    fn AXUIElementSetAttributeValue(
+        element: CFTypeRef,
+        attribute: CFStringRef,
+        value: CFTypeRef,
+    ) -> i32;
     fn AXUIElementSetMessagingTimeout(element: CFTypeRef, timeout_seconds: f32) -> i32;
+}
+
+/// Ask an Electron/Chromium app (Claude, Slack, VS Code, …) to build its web
+/// accessibility tree so the composer's text becomes readable via `AXValue`.
+/// Chromium exposes it lazily, only once an assistive client asks. Harmless for
+/// native apps; best-effort (ignored if it fails).
+pub fn enable_accessibility_for_app(pid: i32) {
+    unsafe {
+        let app_ptr = AXUIElementCreateApplication(pid);
+        if app_ptr.is_null() {
+            return;
+        }
+        let app = CFType::wrap_under_create_rule(app_ptr);
+        let yes = CFBoolean::true_value();
+        for key in ["AXManualAccessibility", "AXEnhancedUserInterface"] {
+            let attr = CFString::new(key);
+            let _ = AXUIElementSetAttributeValue(
+                app.as_concrete_TypeRef(),
+                attr.as_concrete_TypeRef(),
+                yes.as_CFTypeRef(),
+            );
+        }
+    }
 }
 
 /// The text content of the frontmost focused text element, if it exposes an
