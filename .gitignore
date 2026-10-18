@@ -36,3 +36,6 @@ __pycache__/
 resources/icon.iconset/
 resources/menubar_icon.png
 resources/menubar_icon@2x.png
+
+# Local telemetry export output
+labeled.jsonl
