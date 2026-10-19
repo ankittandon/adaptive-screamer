@@ -9,7 +9,7 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-const DEFAULT_MODEL: &str = "accounts/fireworks/models/llama-v3p1-8b-instruct";
+const DEFAULT_MODEL: &str = "accounts/fireworks/models/deepseek-v4p1-flash-1017";
 const DEFAULT_ENDPOINT: &str = "https://api.fireworks.ai/inference/v1/chat/completions";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 
