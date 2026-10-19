@@ -95,6 +95,7 @@ core-graphics = "0.24"
 core-foundation = "0.10"
 arboard = "3"
 screamer-core = { path = "crates/screamer-core" }
+screamer-styling = { path = "crates/screamer-styling" }
 screamer-telemetry = { path = "crates/screamer-telemetry" }
 screamer-whisper = { path = "crates/screamer-whisper" }
 serde = { version = "1", features = ["derive"] }

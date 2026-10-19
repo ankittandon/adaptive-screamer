@@ -11,6 +11,8 @@ mod permission_window;
 mod permissions;
 mod recorder;
 mod sound;
+mod styling;
+mod styling_overlay;
 mod telemetry;
 mod theme;
 

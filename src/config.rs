@@ -80,6 +80,13 @@ pub struct Config {
     /// transcript of the last dictation. Empty means disabled.
     #[serde(default)]
     pub fix_hotkey: String,
+    /// Opt-in: after dictation, offer a styled rewrite via the cloud styling
+    /// model (requires a Fireworks API key). Default off.
+    #[serde(default)]
+    pub styling_enabled: bool,
+    /// How long the styling suggestion card stays up before it is dismissed.
+    #[serde(default = "default_styling_card_timeout_secs")]
+    pub styling_card_timeout_secs: u64,
 }
 
 impl Default for Config {
@@ -95,8 +102,14 @@ impl Default for Config {
             accessibility_helper_dismissed: false,
             telemetry_enabled: false,
             fix_hotkey: String::new(),
+            styling_enabled: false,
+            styling_card_timeout_secs: default_styling_card_timeout_secs(),
         }
     }
+}
+
+fn default_styling_card_timeout_secs() -> u64 {
+    12
 }
 
 fn default_live_transcription() -> bool {
@@ -333,6 +346,8 @@ mod tests {
             accessibility_helper_dismissed: true,
             telemetry_enabled: true,
             fix_hotkey: "right_command".to_string(),
+            styling_enabled: true,
+            styling_card_timeout_secs: 20,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();

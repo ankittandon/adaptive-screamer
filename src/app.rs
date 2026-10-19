@@ -62,6 +62,18 @@ pub struct App {
     live_transcript: Arc<Mutex<String>>,
     pending_completion_sound: Arc<AtomicBool>,
     recording_session: Arc<AtomicU64>,
+    styling_engine: Option<Arc<crate::styling::StylingEngine>>,
+    styling_ready: Arc<Mutex<Option<crate::styling::ReadySuggestion>>>,
+    suggestion_card: Rc<RefCell<crate::styling_overlay::SuggestionCard>>,
+    active_suggestion: Rc<RefCell<Option<ActiveSuggestion>>>,
+    styling_card_timeout: std::time::Duration,
+}
+
+/// Main-thread bookkeeping for a styling suggestion currently on screen.
+struct ActiveSuggestion {
+    styled: String,
+    saved_clipboard: Option<String>,
+    shown_at: std::time::Instant,
 }
 
 pub struct AppInitError {
@@ -754,6 +766,15 @@ impl App {
         let menu = Self::build_menu(mtm, &config);
         status_item.setMenu(Some(&menu));
 
+        // ── Opt-in styling layer (off unless styling_enabled + a key are present) ──
+        let styling_engine = crate::styling::init(&config);
+        let suggestion_card = Rc::new(RefCell::new(crate::styling_overlay::SuggestionCard::new(
+            mtm,
+            config.appearance,
+        )));
+        let styling_card_timeout =
+            std::time::Duration::from_secs(config.styling_card_timeout_secs.max(2));
+
         Ok(Self {
             _status_item: status_item,
             overlay,
@@ -767,6 +788,11 @@ impl App {
             live_transcript: Arc::new(Mutex::new(String::new())),
             pending_completion_sound: Arc::new(AtomicBool::new(false)),
             recording_session: Arc::new(AtomicU64::new(0)),
+            styling_engine,
+            styling_ready: Arc::new(Mutex::new(None)),
+            suggestion_card,
+            active_suggestion: Rc::new(RefCell::new(None)),
+            styling_card_timeout,
         })
     }
 
@@ -930,6 +956,10 @@ impl App {
         let telemetry = crate::telemetry::init(&Config::load());
         let telemetry_dict_release = telemetry.clone();
         let telemetry_fix = telemetry;
+
+        // ── Styling layer shared state for the dictation release ──
+        let styling_engine_release = self.styling_engine.clone();
+        let styling_ready_release = self.styling_ready.clone();
         let sfx_fix = self.sound_effects_enabled.clone();
         let pending_sound_fix = self.pending_completion_sound.clone();
 
@@ -1022,6 +1052,8 @@ impl App {
                     let pending_sound = pending_sound_dict.clone();
                     let sfx = sfx_dict_release.clone();
                     let telemetry = telemetry_dict_release.clone();
+                    let styling_engine = styling_engine_release.clone();
+                    let styling_ready = styling_ready_release.clone();
                     let stop_ms = release_t0.elapsed().as_millis();
 
                     std::thread::spawn(move || {
@@ -1071,6 +1103,15 @@ impl App {
                                             // final edited text once it is sent.
                                             crate::telemetry::start_implicit_capture(store.clone());
                                         }
+
+                                        // Styling: offer a rewrite of what was just pasted.
+                                        if let Some(engine) = styling_engine.as_ref() {
+                                            crate::styling::request(
+                                                engine,
+                                                result.text.clone(),
+                                                styling_ready.clone(),
+                                            );
+                                        }
                                     }
                                     Err(err) => {
                                         eprintln!("[screamer] Paste failed after {}ms: {}", paste_ms, err);
@@ -1117,6 +1158,10 @@ impl App {
         let sound_effects_enabled = self.sound_effects_enabled.clone();
         let live_transcript = self.live_transcript.clone();
         let pending_completion_sound = self.pending_completion_sound.clone();
+        let suggestion_card = self.suggestion_card.clone();
+        let active_suggestion = self.active_suggestion.clone();
+        let styling_ready = self.styling_ready.clone();
+        let styling_card_timeout = self.styling_card_timeout;
 
         unsafe {
             use objc2::ClassType;
@@ -1152,6 +1197,58 @@ impl App {
                         ov.hide();
                     }
                 }
+
+                // ── Styling suggestion card lifecycle ──
+                if let (Ok(mut card), Ok(mut active)) = (
+                    suggestion_card.try_borrow_mut(),
+                    active_suggestion.try_borrow_mut(),
+                ) {
+                    if recording {
+                        // A new dictation supersedes any pending suggestion.
+                        if let Some(act) = active.take() {
+                            finalize_suggestion(&mut card, act);
+                        }
+                    } else if active.is_none() {
+                        // Present a freshly generated suggestion, if one is ready.
+                        let ready = styling_ready.lock().ok().and_then(|mut s| s.take());
+                        if let Some(sug) = ready {
+                            let field = crate::axtext::focused_text();
+                            let safe = field
+                                .as_deref()
+                                .map(|f| crate::styling::close_enough(f, &sug.raw))
+                                .unwrap_or(false);
+                            let hint = if safe {
+                                "Press  ⌘V  to apply   ·   ignore to keep raw"
+                            } else {
+                                "Select your text, then  ⌘V  to apply"
+                            };
+                            card.show(&sug.styled, hint);
+                            let saved = crate::paster::get_clipboard();
+                            let _ = crate::paster::set_clipboard(&sug.styled);
+                            if safe {
+                                let _ = crate::paster::select_all();
+                            }
+                            logging::log_flow_event(
+                                "styling",
+                                "shown",
+                                &format!("edit_ratio={} safe={safe}", sug.edit_ratio),
+                            );
+                            *active = Some(ActiveSuggestion {
+                                styled: sug.styled,
+                                saved_clipboard: saved,
+                                shown_at: std::time::Instant::now(),
+                            });
+                        }
+                    } else if active
+                        .as_ref()
+                        .map(|a| a.shown_at.elapsed() >= styling_card_timeout)
+                        .unwrap_or(false)
+                    {
+                        if let Some(act) = active.take() {
+                            finalize_suggestion(&mut card, act);
+                        }
+                    }
+                }
             });
 
             let _timer: Retained<NSTimer> = msg_send![
@@ -1170,6 +1267,21 @@ impl App {
         alert.setInformativeText(&NSString::from_str(message));
         alert.runModal();
     }
+}
+
+/// Dismiss a styling suggestion: infer whether it was applied (the focused field
+/// now reads as the styled text), log the outcome, restore the clipboard, hide.
+fn finalize_suggestion(card: &mut crate::styling_overlay::SuggestionCard, act: ActiveSuggestion) {
+    let applied = crate::axtext::focused_text()
+        .map(|f| crate::styling::close_enough(&f, &act.styled))
+        .unwrap_or(false);
+    logging::log_flow_event(
+        "styling",
+        if applied { "applied" } else { "ignored" },
+        "",
+    );
+    crate::paster::restore_clipboard(act.saved_clipboard);
+    card.hide();
 }
 
 fn start_recording_capture(

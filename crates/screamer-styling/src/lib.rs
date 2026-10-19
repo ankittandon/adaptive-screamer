@@ -9,6 +9,9 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
+mod gate;
+pub use gate::{assess, GateConfig, GateDecision};
+
 const DEFAULT_MODEL: &str = "accounts/fireworks/models/deepseek-v4p1-flash-1017";
 const DEFAULT_ENDPOINT: &str = "https://api.fireworks.ai/inference/v1/chat/completions";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
@@ -123,13 +126,10 @@ pub struct FireworksGenerator {
 }
 
 impl FireworksGenerator {
-    /// Build from the environment: `FIREWORKS_API_KEY` (required),
-    /// `FIREWORKS_MODEL`, `FIREWORKS_ENDPOINT`, `FIREWORKS_GLOSSARY` (optional).
-    pub fn from_env() -> Result<Self, StyleError> {
-        let api_key = std::env::var("FIREWORKS_API_KEY")
-            .ok()
-            .filter(|k| !k.trim().is_empty())
-            .ok_or(StyleError::MissingApiKey)?;
+    /// Build from an already-resolved API key. Model, endpoint, and glossary are
+    /// still taken from the environment (with defaults). The GUI app uses this
+    /// because a double-clicked app does not inherit the shell's env.
+    pub fn new(api_key: String) -> Self {
         let model = std::env::var("FIREWORKS_MODEL")
             .ok()
             .filter(|m| !m.trim().is_empty())
@@ -139,22 +139,31 @@ impl FireworksGenerator {
             .filter(|e| !e.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
 
-        let mut glossary: Vec<String> =
-            DEFAULT_GLOSSARY.iter().map(|s| s.to_string()).collect();
+        let mut glossary: Vec<String> = DEFAULT_GLOSSARY.iter().map(|s| s.to_string()).collect();
         if let Ok(extra) = std::env::var("FIREWORKS_GLOSSARY") {
             for term in extra.split(',').map(str::trim).filter(|t| !t.is_empty()) {
                 glossary.push(term.to_string());
             }
         }
 
-        Ok(Self {
+        Self {
             api_key,
             model,
             endpoint,
             timeout: DEFAULT_TIMEOUT,
             temperature: 0.3,
             glossary,
-        })
+        }
+    }
+
+    /// Build from the environment: `FIREWORKS_API_KEY` (required),
+    /// `FIREWORKS_MODEL`, `FIREWORKS_ENDPOINT`, `FIREWORKS_GLOSSARY` (optional).
+    pub fn from_env() -> Result<Self, StyleError> {
+        let api_key = std::env::var("FIREWORKS_API_KEY")
+            .ok()
+            .filter(|k| !k.trim().is_empty())
+            .ok_or(StyleError::MissingApiKey)?;
+        Ok(Self::new(api_key))
     }
 
     pub fn model(&self) -> &str {

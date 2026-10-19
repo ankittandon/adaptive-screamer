@@ -4,6 +4,7 @@ use std::ffi::c_void;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+const VK_ANSI_A: CGKeyCode = 0;
 const VK_ANSI_C: CGKeyCode = 8;
 const VK_ANSI_V: CGKeyCode = 9;
 
@@ -84,6 +85,44 @@ pub fn capture_selection() -> Result<String, String> {
 
     posted?;
     captured.ok_or_else(|| "nothing was selected".to_string())
+}
+
+/// Read the clipboard's current text, if any. Used to save it before the
+/// styling suggestion borrows it, so it can be restored afterwards.
+pub fn get_clipboard() -> Option<String> {
+    arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok())
+}
+
+/// Put text on the clipboard.
+pub fn set_clipboard(text: &str) -> Result<(), String> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("Failed to open clipboard: {e}"))?;
+    clipboard
+        .set_text(text)
+        .map_err(|e| format!("Failed to set clipboard: {e}"))
+}
+
+/// Restore a clipboard value captured earlier (clearing it when there was none).
+pub fn restore_clipboard(previous: Option<String>) {
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        match previous {
+            Some(text) => {
+                let _ = clipboard.set_text(text);
+            }
+            None => {
+                let _ = clipboard.clear();
+            }
+        }
+    }
+}
+
+/// Select all text in the focused field (Cmd+A). Used so the styling suggestion
+/// can be applied with a single Cmd+V. No-op (error) without Accessibility.
+pub fn select_all() -> Result<(), String> {
+    if !has_accessibility_permission() {
+        return Err("Accessibility access is not enabled for Screamer.".to_string());
+    }
+    post_command_key(VK_ANSI_A)
 }
 
 fn post_command_key(keycode: CGKeyCode) -> Result<(), String> {
