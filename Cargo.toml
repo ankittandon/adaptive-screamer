@@ -15,6 +15,7 @@ members = [
     ".",
     "crates/screamer-core",
     "crates/screamer-models",
+    "crates/screamer-styling",
     "crates/screamer-telemetry",
     "crates/screamer-whisper",
 ]

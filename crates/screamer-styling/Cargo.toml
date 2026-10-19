@@ -1,0 +1,20 @@
+[package]
+name = "screamer-styling"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Cloud styling generator (Fireworks) that rewrites dictation into clean written text, preserving meaning."
+
+[lib]
+name = "screamer_styling"
+path = "src/lib.rs"
+
+[[bin]]
+name = "style-try"
+path = "src/bin/style_try.rs"
+
+[dependencies]
+ureq = { version = "2", features = ["json", "tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
