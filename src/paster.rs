@@ -125,6 +125,15 @@ pub fn select_all() -> Result<(), String> {
     post_command_key(VK_ANSI_A)
 }
 
+/// Post Cmd+V to the focused field (the clipboard already holds the styled text).
+/// Used by the card's Apply button.
+pub fn send_paste() -> Result<(), String> {
+    if !has_accessibility_permission() {
+        return Err("Accessibility access is not enabled for Screamer.".to_string());
+    }
+    post_command_key(VK_ANSI_V)
+}
+
 fn post_command_key(keycode: CGKeyCode) -> Result<(), String> {
     let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
         .map_err(|_| "Failed to create CoreGraphics event source".to_string())?;

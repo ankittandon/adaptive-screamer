@@ -1241,14 +1241,39 @@ impl App {
                                 shown_at: std::time::Instant::now(),
                             });
                         }
-                    } else if let Some(act_ref) = active.as_ref() {
-                        // Dismiss the moment the user applies (field becomes the
-                        // styled text), or when the card times out.
-                        let applied = suggestion_applied(act_ref);
-                        let timed_out = act_ref.shown_at.elapsed() >= styling_card_timeout;
-                        if applied || timed_out {
-                            if let Some(act) = active.take() {
-                                finalize_suggestion(&mut card, act, applied);
+                    } else if active.is_some() {
+                        match crate::styling_overlay::take_card_action() {
+                            Some(crate::styling_overlay::CardAction::Apply) => {
+                                if let Some(act) = active.take() {
+                                    let saved = act.saved_clipboard.clone();
+                                    let _ = crate::paster::send_paste();
+                                    // Restore the clipboard after the paste lands,
+                                    // so it isn't swapped back before Cmd+V reads it.
+                                    std::thread::spawn(move || {
+                                        std::thread::sleep(std::time::Duration::from_millis(200));
+                                        crate::paster::restore_clipboard(saved);
+                                    });
+                                    logging::log_flow_event("styling", "applied", "(click)");
+                                    card.hide();
+                                }
+                            }
+                            Some(crate::styling_overlay::CardAction::Dismiss) => {
+                                if let Some(act) = active.take() {
+                                    finalize_suggestion(&mut card, act, false);
+                                }
+                            }
+                            None => {
+                                // Dismiss the moment the user applies via ⌘V (the
+                                // field becomes the styled text), or on timeout.
+                                let act_ref = active.as_ref().unwrap();
+                                let applied = suggestion_applied(act_ref);
+                                let timed_out =
+                                    act_ref.shown_at.elapsed() >= styling_card_timeout;
+                                if applied || timed_out {
+                                    if let Some(act) = active.take() {
+                                        finalize_suggestion(&mut card, act, applied);
+                                    }
+                                }
                             }
                         }
                     }
