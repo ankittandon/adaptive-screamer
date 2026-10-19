@@ -1206,7 +1206,8 @@ impl App {
                     if recording {
                         // A new dictation supersedes any pending suggestion.
                         if let Some(act) = active.take() {
-                            finalize_suggestion(&mut card, act);
+                            let applied = suggestion_applied(&act);
+                            finalize_suggestion(&mut card, act, applied);
                         }
                     } else if active.is_none() {
                         // Present a freshly generated suggestion, if one is ready.
@@ -1239,13 +1240,15 @@ impl App {
                                 shown_at: std::time::Instant::now(),
                             });
                         }
-                    } else if active
-                        .as_ref()
-                        .map(|a| a.shown_at.elapsed() >= styling_card_timeout)
-                        .unwrap_or(false)
-                    {
-                        if let Some(act) = active.take() {
-                            finalize_suggestion(&mut card, act);
+                    } else if let Some(act_ref) = active.as_ref() {
+                        // Dismiss the moment the user applies (field becomes the
+                        // styled text), or when the card times out.
+                        let applied = suggestion_applied(act_ref);
+                        let timed_out = act_ref.shown_at.elapsed() >= styling_card_timeout;
+                        if applied || timed_out {
+                            if let Some(act) = active.take() {
+                                finalize_suggestion(&mut card, act, applied);
+                            }
                         }
                     }
                 }
@@ -1269,12 +1272,12 @@ impl App {
     }
 }
 
-/// Dismiss a styling suggestion: infer whether it was applied (the focused field
-/// now reads as the styled text), log the outcome, restore the clipboard, hide.
-fn finalize_suggestion(card: &mut crate::styling_overlay::SuggestionCard, act: ActiveSuggestion) {
-    let applied = crate::axtext::focused_text()
-        .map(|f| crate::styling::close_enough(&f, &act.styled))
-        .unwrap_or(false);
+/// Dismiss a styling suggestion: log the outcome, restore the clipboard, hide.
+fn finalize_suggestion(
+    card: &mut crate::styling_overlay::SuggestionCard,
+    act: ActiveSuggestion,
+    applied: bool,
+) {
     logging::log_flow_event(
         "styling",
         if applied { "applied" } else { "ignored" },
@@ -1282,6 +1285,13 @@ fn finalize_suggestion(card: &mut crate::styling_overlay::SuggestionCard, act: A
     );
     crate::paster::restore_clipboard(act.saved_clipboard);
     card.hide();
+}
+
+/// Whether the focused field now reads as the styled text (i.e. the user applied).
+fn suggestion_applied(act: &ActiveSuggestion) -> bool {
+    crate::axtext::focused_text()
+        .map(|f| crate::styling::close_enough(&f, &act.styled))
+        .unwrap_or(false)
 }
 
 fn start_recording_capture(
