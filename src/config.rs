@@ -90,6 +90,14 @@ pub struct Config {
     /// Where the styling card anchors: `top_right` (default) or `bottom_center`.
     #[serde(default = "default_styling_card_position")]
     pub styling_card_position: String,
+    /// How styling is applied: `inline` (default — paste the styled rewrite
+    /// directly, waiting on the model) or `card` (paste raw instantly, then
+    /// offer a suggestion card).
+    #[serde(default = "default_styling_mode")]
+    pub styling_mode: String,
+    /// Frontmost-app bundle ids where styling never runs (raw pastes instantly).
+    #[serde(default = "default_styling_skip_apps")]
+    pub styling_skip_apps: Vec<String>,
 }
 
 impl Default for Config {
@@ -108,6 +116,8 @@ impl Default for Config {
             styling_enabled: false,
             styling_card_timeout_secs: default_styling_card_timeout_secs(),
             styling_card_position: default_styling_card_position(),
+            styling_mode: default_styling_mode(),
+            styling_skip_apps: default_styling_skip_apps(),
         }
     }
 }
@@ -118,6 +128,24 @@ fn default_styling_card_timeout_secs() -> u64 {
 
 fn default_styling_card_position() -> String {
     "top_right".to_string()
+}
+
+fn default_styling_mode() -> String {
+    "inline".to_string()
+}
+
+fn default_styling_skip_apps() -> Vec<String> {
+    // Dev / chat apps where you want raw text instantly, not a polished rewrite.
+    [
+        "com.anthropic.claudefordesktop",
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "com.microsoft.VSCode",
+        "com.apple.dt.Xcode",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 fn default_live_transcription() -> bool {
@@ -357,6 +385,8 @@ mod tests {
             styling_enabled: true,
             styling_card_timeout_secs: 20,
             styling_card_position: "bottom_center".to_string(),
+            styling_mode: "card".to_string(),
+            styling_skip_apps: vec!["com.apple.Terminal".to_string()],
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();

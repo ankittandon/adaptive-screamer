@@ -60,14 +60,15 @@ pub fn init(config: &Config) -> Option<Arc<TelemetryStore>> {
 pub fn log_dictation(
     store: &TelemetryStore,
     samples: &[f32],
-    text: &str,
+    raw_text: &str,
+    pasted_text: &str,
     app_context: Option<String>,
 ) {
     let model = Config::load().model;
     let result = store.log_dictation(NewDictation {
         samples,
-        raw_text: text,
-        pasted_text: text,
+        raw_text,
+        pasted_text,
         app_context: app_context.as_deref(),
         model: &model,
     });

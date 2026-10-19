@@ -961,6 +961,9 @@ impl App {
         // ── Styling layer shared state for the dictation release ──
         let styling_engine_release = self.styling_engine.clone();
         let styling_ready_release = self.styling_ready.clone();
+        let styling_cfg = Config::load();
+        let styling_mode_release = styling_cfg.styling_mode.clone();
+        let styling_skip_release = styling_cfg.styling_skip_apps.clone();
         let sfx_fix = self.sound_effects_enabled.clone();
         let pending_sound_fix = self.pending_completion_sound.clone();
 
@@ -1055,6 +1058,8 @@ impl App {
                     let telemetry = telemetry_dict_release.clone();
                     let styling_engine = styling_engine_release.clone();
                     let styling_ready = styling_ready_release.clone();
+                    let styling_mode = styling_mode_release.clone();
+                    let styling_skip = styling_skip_release.clone();
                     let stop_ms = release_t0.elapsed().as_millis();
 
                     std::thread::spawn(move || {
@@ -1071,13 +1076,30 @@ impl App {
                                     eprintln!("[screamer] Accessibility permission missing; paste may fail");
                                 }
 
-                                // Telemetry: remember which app the text is going into.
-                                let app_context = telemetry
-                                    .as_ref()
-                                    .and_then(|_| crate::telemetry::frontmost_app_bundle_id());
+                                // Which app is the text going into (styling + telemetry).
+                                let app_context = crate::telemetry::frontmost_app_bundle_id();
+
+                                // Inline styling: paste the styled rewrite directly,
+                                // unless this app is skipped or styling declines.
+                                let inline = styling_mode == "inline";
+                                let skipped = crate::styling::app_is_skipped(
+                                    app_context.as_deref(),
+                                    &styling_skip,
+                                );
+                                let styled = if inline && !skipped {
+                                    styling_engine
+                                        .as_ref()
+                                        .and_then(|e| crate::styling::style_now(e, &result.text))
+                                } else {
+                                    None
+                                };
+                                let to_paste = match &styled {
+                                    Some((s, _, _)) => s.clone(),
+                                    None => result.text.clone(),
+                                };
 
                                 let paste_t0 = std::time::Instant::now();
-                                let paste_result = crate::paster::paste(&result.text);
+                                let paste_result = crate::paster::paste(&to_paste);
                                 let paste_ms = paste_t0.elapsed().as_millis();
 
                                 match paste_result {
@@ -1092,26 +1114,37 @@ impl App {
                                             release_t0.elapsed().as_millis()
                                         );
 
+                                        if let Some((_, ratio, lat)) = &styled {
+                                            logging::log_flow_event(
+                                                "styling",
+                                                "inline",
+                                                &format!("edit_ratio={ratio} latency_ms={lat}"),
+                                            );
+                                        }
+
                                         // After the paste, so logging never delays it.
+                                        // raw_text is the transcription; pasted_text is
+                                        // what actually landed (styled in inline mode).
                                         if let Some(store) = telemetry.as_ref() {
                                             crate::telemetry::log_dictation(
                                                 store,
                                                 &samples[transcribe_window.range],
                                                 &result.text,
+                                                &to_paste,
                                                 app_context,
                                             );
-                                            // Watch the focused field and capture the
-                                            // final edited text once it is sent.
                                             crate::telemetry::start_implicit_capture(store.clone());
                                         }
 
-                                        // Styling: offer a rewrite of what was just pasted.
-                                        if let Some(engine) = styling_engine.as_ref() {
-                                            crate::styling::request(
-                                                engine,
-                                                result.text.clone(),
-                                                styling_ready.clone(),
-                                            );
+                                        // Card mode: offer a suggestion instead of pasting styled.
+                                        if !inline && !skipped {
+                                            if let Some(engine) = styling_engine.as_ref() {
+                                                crate::styling::request(
+                                                    engine,
+                                                    result.text.clone(),
+                                                    styling_ready.clone(),
+                                                );
+                                            }
                                         }
                                     }
                                     Err(err) => {

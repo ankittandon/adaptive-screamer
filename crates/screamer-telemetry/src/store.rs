@@ -76,7 +76,9 @@ impl From<io::Error> for FixError {
 
 struct PendingFix {
     id: String,
-    raw_text: String,
+    /// What was actually pasted into the field (raw transcript, or the styled
+    /// rewrite in inline mode). A correction is measured against this.
+    pasted_text: String,
     logged_at: Instant,
 }
 
@@ -144,7 +146,7 @@ impl TelemetryStore {
         if let Ok(mut pending) = self.pending.lock() {
             *pending = Some(PendingFix {
                 id: id.clone(),
-                raw_text: new.raw_text.to_string(),
+                pasted_text: new.pasted_text.to_string(),
                 logged_at: Instant::now(),
             });
         }
@@ -180,7 +182,7 @@ impl TelemetryStore {
             return Err(FixError::Expired);
         }
 
-        let ratio = edit_ratio(&last.raw_text, settled);
+        let ratio = edit_ratio(&last.pasted_text, settled);
         if ratio > MAX_FIX_EDIT_RATIO {
             return Err(FixError::TooDifferent(ratio));
         }

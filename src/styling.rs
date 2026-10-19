@@ -123,3 +123,45 @@ pub fn request(engine: &Arc<StylingEngine>, raw: String, ready: Arc<Mutex<Option
 pub fn close_enough(a: &str, b: &str) -> bool {
     a.trim() == b.trim() || screamer_telemetry::edit_ratio(a, b) < 0.15
 }
+
+/// Synchronously gate and style `raw`, blocking the caller (used by inline mode,
+/// which runs on the dictation worker thread). Returns the styled text plus its
+/// edit ratio and latency, or `None` to paste the raw text instead (trivial,
+/// unchanged, declined, or errored).
+pub fn style_now(engine: &StylingEngine, raw: &str) -> Option<(String, f32, u128)> {
+    if assess(raw, &engine.gate) == GateDecision::Skip {
+        logging::log_flow_event("styling", "gate", "skip (trivial)");
+        return None;
+    }
+    match engine.generator.style(raw, &StyleContext::default()) {
+        Ok(Some(result)) => {
+            let ratio = screamer_telemetry::edit_ratio(raw, &result.styled);
+            if ratio < MIN_SHOW_EDIT_RATIO {
+                logging::log_flow_event(
+                    "styling",
+                    "suppress",
+                    &format!("edit_ratio={ratio} (~unchanged) latency_ms={}", result.latency_ms),
+                );
+                return None;
+            }
+            Some((result.styled, ratio, result.latency_ms))
+        }
+        Ok(None) => {
+            logging::log_flow_event("styling", "declined", "no rewrite");
+            None
+        }
+        Err(err) => {
+            eprintln!("[screamer] Styling error: {err}");
+            None
+        }
+    }
+}
+
+/// Whether styling should be skipped for the frontmost app (dev/chat apps where
+/// you want raw text instantly, not a polished rewrite).
+pub fn app_is_skipped(bundle_id: Option<&str>, skip: &[String]) -> bool {
+    match bundle_id {
+        Some(id) => skip.iter().any(|s| s == id),
+        None => false,
+    }
+}
