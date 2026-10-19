@@ -17,7 +17,26 @@ const WIDTH: f64 = 460.0;
 const HEIGHT: f64 = 132.0;
 const PADDING: f64 = 16.0;
 const CORNER_RADIUS: f64 = 16.0;
+const EDGE_MARGIN: f64 = 16.0;
 const BOTTOM_MARGIN: f64 = 150.0;
+
+/// Where the suggestion card anchors on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardAnchor {
+    /// Top-right under the menu bar — stays out of the typing area.
+    TopRight,
+    /// Centered near the bottom of the screen.
+    BottomCenter,
+}
+
+impl CardAnchor {
+    pub fn from_config(value: &str) -> Self {
+        match value {
+            "bottom_center" => CardAnchor::BottomCenter,
+            _ => CardAnchor::TopRight,
+        }
+    }
+}
 const TITLE_H: f64 = 18.0;
 const HINT_H: f64 = 18.0;
 const GAP: f64 = 8.0;
@@ -30,10 +49,11 @@ pub struct SuggestionCard {
     hint_label: Retained<NSTextField>,
     visible: bool,
     appearance: AppAppearance,
+    anchor: CardAnchor,
 }
 
 impl SuggestionCard {
-    pub fn new(mtm: MainThreadMarker, appearance: AppAppearance) -> Self {
+    pub fn new(mtm: MainThreadMarker, appearance: AppAppearance, anchor: CardAnchor) -> Self {
         let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
         let frame = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(WIDTH, HEIGHT));
 
@@ -116,6 +136,7 @@ impl SuggestionCard {
             hint_label,
             visible: false,
             appearance,
+            anchor,
         };
         card.apply_theme();
         card
@@ -148,10 +169,20 @@ impl SuggestionCard {
     fn position(&self) {
         if let Some(mtm) = MainThreadMarker::new() {
             if let Some(screen) = NSScreen::mainScreen(mtm) {
-                let sf = screen.frame();
-                let x = (sf.size.width - WIDTH) / 2.0;
-                self.panel
-                    .setFrameOrigin(CGPoint::new(x, BOTTOM_MARGIN));
+                // visibleFrame excludes the menu bar and dock, so the card stays
+                // clear of them.
+                let vf = screen.visibleFrame();
+                let (x, y) = match self.anchor {
+                    CardAnchor::TopRight => (
+                        vf.origin.x + vf.size.width - WIDTH - EDGE_MARGIN,
+                        vf.origin.y + vf.size.height - HEIGHT - EDGE_MARGIN,
+                    ),
+                    CardAnchor::BottomCenter => (
+                        vf.origin.x + (vf.size.width - WIDTH) / 2.0,
+                        vf.origin.y + BOTTOM_MARGIN,
+                    ),
+                };
+                self.panel.setFrameOrigin(CGPoint::new(x, y));
             }
         }
     }

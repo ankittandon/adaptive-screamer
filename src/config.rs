@@ -87,6 +87,9 @@ pub struct Config {
     /// How long the styling suggestion card stays up before it is dismissed.
     #[serde(default = "default_styling_card_timeout_secs")]
     pub styling_card_timeout_secs: u64,
+    /// Where the styling card anchors: `top_right` (default) or `bottom_center`.
+    #[serde(default = "default_styling_card_position")]
+    pub styling_card_position: String,
 }
 
 impl Default for Config {
@@ -104,12 +107,17 @@ impl Default for Config {
             fix_hotkey: String::new(),
             styling_enabled: false,
             styling_card_timeout_secs: default_styling_card_timeout_secs(),
+            styling_card_position: default_styling_card_position(),
         }
     }
 }
 
 fn default_styling_card_timeout_secs() -> u64 {
     12
+}
+
+fn default_styling_card_position() -> String {
+    "top_right".to_string()
 }
 
 fn default_live_transcription() -> bool {
@@ -348,6 +356,7 @@ mod tests {
             fix_hotkey: "right_command".to_string(),
             styling_enabled: true,
             styling_card_timeout_secs: 20,
+            styling_card_position: "bottom_center".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();

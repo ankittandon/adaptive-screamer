@@ -771,6 +771,7 @@ impl App {
         let suggestion_card = Rc::new(RefCell::new(crate::styling_overlay::SuggestionCard::new(
             mtm,
             config.appearance,
+            crate::styling_overlay::CardAnchor::from_config(&config.styling_card_position),
         )));
         let styling_card_timeout =
             std::time::Duration::from_secs(config.styling_card_timeout_secs.max(2));
