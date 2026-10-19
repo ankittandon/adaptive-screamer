@@ -13,6 +13,33 @@ const DEFAULT_MODEL: &str = "accounts/fireworks/models/deepseek-v4p1-flash-1017"
 const DEFAULT_ENDPOINT: &str = "https://api.fireworks.ai/inference/v1/chat/completions";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Domain terms the speaker uses, so the model can fix clear mis-transcriptions
+/// (e.g. "stylus tick layer" → "stylistic layer", "in light" → "inline",
+/// "super whisper" → "Superwhisper"). Extend at runtime with `FIREWORKS_GLOSSARY`
+/// (comma-separated).
+const DEFAULT_GLOSSARY: &[&str] = &[
+    "Screamer",
+    "Adaptive Screamer",
+    "Superwhisper",
+    "Whisper",
+    "inline",
+    "stylistic layer",
+    "styling layer",
+    "overlay",
+    "clipboard",
+    "Fireworks",
+    "on-device",
+    "eval set",
+    "fine-tuning",
+    "post-training",
+    "distillation",
+    "Grammarly",
+    "telemetry",
+    "left Control",
+    "right Command",
+    "A/B test",
+];
+
 /// Context that can steer styling (frontmost app, etc.). Unused by the prompt
 /// today; carried so callers don't change signature when it starts to matter.
 #[derive(Debug, Default, Clone)]
@@ -38,9 +65,7 @@ pub enum StyleError {
 impl fmt::Display for StyleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            StyleError::MissingApiKey => {
-                write!(f, "FIREWORKS_API_KEY is not set")
-            }
+            StyleError::MissingApiKey => write!(f, "FIREWORKS_API_KEY is not set"),
             StyleError::Http(msg) => write!(f, "request failed: {msg}"),
             StyleError::Parse(msg) => write!(f, "could not parse response: {msg}"),
         }
@@ -56,8 +81,7 @@ pub trait StyleGenerator {
     fn style(&self, raw: &str, ctx: &StyleContext) -> Result<Option<StyleResult>, StyleError>;
 }
 
-/// The instruction that constrains the rewrite: clean up delivery, never change
-/// meaning, never answer or act on the text.
+/// The base instructions: clean up delivery, never change meaning, never answer.
 pub const SYSTEM_PROMPT: &str = "\
 You clean up speech-to-text dictation into polished written text.
 
@@ -68,8 +92,26 @@ Rules:
 formal than the original unless the original clearly is.
 - Fix filler words, false starts, repetition, run-on sentences, punctuation, \
 and capitalization. Merge or split sentences only to improve readability.
+- Use plain punctuation: commas, periods, colons, parentheses, question marks. \
+Do NOT use em dashes or en dashes; rewrite those as commas, periods, or \
+parentheses.
+- Use standard sentence case: capitalize the first word of every sentence and \
+proper nouns, consistently, even for short fragments.
 - If the text is already clean, return it unchanged.
 - Output ONLY the rewritten text. No preamble, quotes, labels, or commentary.";
+
+/// Append the domain glossary to the base prompt.
+fn build_system_prompt(glossary: &[String]) -> String {
+    if glossary.is_empty() {
+        return SYSTEM_PROMPT.to_string();
+    }
+    format!(
+        "{SYSTEM_PROMPT}\n\nDomain terms the speaker uses. If a word is clearly a \
+mis-transcription of one of these, correct it, but never force a term in where \
+it does not belong:\n{}",
+        glossary.join(", ")
+    )
+}
 
 pub struct FireworksGenerator {
     api_key: String,
@@ -77,11 +119,12 @@ pub struct FireworksGenerator {
     endpoint: String,
     timeout: Duration,
     temperature: f64,
+    glossary: Vec<String>,
 }
 
 impl FireworksGenerator {
     /// Build from the environment: `FIREWORKS_API_KEY` (required),
-    /// `FIREWORKS_MODEL` and `FIREWORKS_ENDPOINT` (optional overrides).
+    /// `FIREWORKS_MODEL`, `FIREWORKS_ENDPOINT`, `FIREWORKS_GLOSSARY` (optional).
     pub fn from_env() -> Result<Self, StyleError> {
         let api_key = std::env::var("FIREWORKS_API_KEY")
             .ok()
@@ -95,12 +138,22 @@ impl FireworksGenerator {
             .ok()
             .filter(|e| !e.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
+
+        let mut glossary: Vec<String> =
+            DEFAULT_GLOSSARY.iter().map(|s| s.to_string()).collect();
+        if let Ok(extra) = std::env::var("FIREWORKS_GLOSSARY") {
+            for term in extra.split(',').map(str::trim).filter(|t| !t.is_empty()) {
+                glossary.push(term.to_string());
+            }
+        }
+
         Ok(Self {
             api_key,
             model,
             endpoint,
             timeout: DEFAULT_TIMEOUT,
             temperature: 0.3,
+            glossary,
         })
     }
 
@@ -121,37 +174,51 @@ impl StyleGenerator for FireworksGenerator {
             "temperature": self.temperature,
             "max_tokens": 1024,
             "messages": [
-                { "role": "system", "content": SYSTEM_PROMPT },
+                { "role": "system", "content": build_system_prompt(&self.glossary) },
                 { "role": "user", "content": raw }
             ]
         });
 
-        let agent = ureq::AgentBuilder::new()
-            .timeout(self.timeout)
-            .build();
-
+        let agent = ureq::AgentBuilder::new().timeout(self.timeout).build();
         let started = Instant::now();
-        let response = agent
-            .post(&self.endpoint)
-            .set("Authorization", &format!("Bearer {}", self.api_key))
-            .set("Content-Type", "application/json")
-            .send_json(body);
 
-        let value: serde_json::Value = match response {
-            Ok(resp) => resp
-                .into_json()
-                .map_err(|e| StyleError::Parse(e.to_string()))?,
-            Err(ureq::Error::Status(code, resp)) => {
-                // Surface the API's error message, but never the key.
-                let detail = resp
-                    .into_string()
-                    .unwrap_or_default()
-                    .chars()
-                    .take(300)
-                    .collect::<String>();
-                return Err(StyleError::Http(format!("HTTP {code}: {detail}")));
+        // One retry: cloud calls flake (timeouts, transient 5xx). Don't retry a
+        // 4xx (bad key, bad model) — that won't change on a second try.
+        let max_attempts = 2;
+        let mut last_transport_err = String::new();
+        let value: serde_json::Value = 'send: loop {
+            for attempt in 1..=max_attempts {
+                let resp = agent
+                    .post(&self.endpoint)
+                    .set("Authorization", &format!("Bearer {}", self.api_key))
+                    .set("Content-Type", "application/json")
+                    .send_json(body.clone());
+                match resp {
+                    Ok(resp) => {
+                        break 'send resp
+                            .into_json()
+                            .map_err(|e| StyleError::Parse(e.to_string()))?;
+                    }
+                    Err(ureq::Error::Status(code, resp)) => {
+                        let detail = resp
+                            .into_string()
+                            .unwrap_or_default()
+                            .chars()
+                            .take(300)
+                            .collect::<String>();
+                        return Err(StyleError::Http(format!("HTTP {code}: {detail}")));
+                    }
+                    Err(e) => {
+                        last_transport_err = e.to_string();
+                        if attempt < max_attempts {
+                            continue;
+                        }
+                    }
+                }
             }
-            Err(e) => return Err(StyleError::Http(e.to_string())),
+            return Err(StyleError::Http(format!(
+                "{last_transport_err} (after {max_attempts} attempts)"
+            )));
         };
         let latency_ms = started.elapsed().as_millis();
 
@@ -201,8 +268,21 @@ mod tests {
     }
 
     #[test]
+    fn system_prompt_bans_em_dashes_and_includes_glossary() {
+        assert!(SYSTEM_PROMPT.contains("em dash"));
+        let p = build_system_prompt(&["Superwhisper".to_string(), "inline".to_string()]);
+        assert!(p.contains("Superwhisper"));
+        assert!(p.contains("inline"));
+        assert!(p.contains(SYSTEM_PROMPT));
+    }
+
+    #[test]
+    fn empty_glossary_is_just_the_base_prompt() {
+        assert_eq!(build_system_prompt(&[]), SYSTEM_PROMPT);
+    }
+
+    #[test]
     fn missing_key_is_reported() {
-        // Only meaningful when the var is unset in the environment.
         if std::env::var("FIREWORKS_API_KEY").is_err() {
             assert!(matches!(
                 FireworksGenerator::from_env(),
