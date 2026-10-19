@@ -267,10 +267,12 @@ impl SuggestionCard {
         self.panel.orderOut(None);
     }
 
+    #[allow(dead_code)]
     pub fn is_visible(&self) -> bool {
         self.visible
     }
 
+    #[allow(dead_code)]
     pub fn set_appearance(&mut self, appearance: AppAppearance) {
         self.appearance = appearance;
         self.apply_theme();

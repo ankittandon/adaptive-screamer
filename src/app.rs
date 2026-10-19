@@ -1430,18 +1430,21 @@ fn defer_restore(saved: Option<String>) {
     });
 }
 
-/// Replace the styled text that was pasted with the raw transcription.
+/// Replace the styled text that was pasted with the raw transcription:
+/// select all, then paste raw (off the main thread, with a beat between the
+/// select and the paste so the selection lands first).
 fn do_revert(act: &ActiveSuggestion) {
     let saved = crate::paster::get_clipboard();
-    let _ = crate::paster::set_clipboard(&act.raw);
-    let safe = crate::axtext::focused_text()
-        .map(|f| crate::styling::close_enough(&f, &act.styled))
-        .unwrap_or(false);
-    if safe {
-        let _ = crate::paster::select_all();
+    if crate::paster::set_clipboard(&act.raw).is_err() {
+        return;
     }
-    let _ = crate::paster::send_paste();
-    defer_restore(saved);
+    std::thread::spawn(move || {
+        let _ = crate::paster::select_all();
+        std::thread::sleep(std::time::Duration::from_millis(40));
+        let _ = crate::paster::send_paste();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        crate::paster::restore_clipboard(saved);
+    });
 }
 
 fn start_recording_capture(
