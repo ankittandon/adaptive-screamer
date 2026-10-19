@@ -71,8 +71,12 @@ pub struct App {
 
 /// Main-thread bookkeeping for a styling suggestion currently on screen.
 struct ActiveSuggestion {
+    kind: crate::styling::SuggestionKind,
     styled: String,
+    raw: String,
+    /// The clipboard value borrowed while an Apply card is up, to restore later.
     saved_clipboard: Option<String>,
+    clipboard_borrowed: bool,
     shown_at: std::time::Instant,
 }
 
@@ -1146,6 +1150,19 @@ impl App {
                                                 );
                                             }
                                         }
+
+                                        // Inline mode: the styled text already landed —
+                                        // offer a card to revert to raw.
+                                        if inline {
+                                            if let Some((styled_text, ratio, _)) = &styled {
+                                                crate::styling::offer_revert(
+                                                    result.text.clone(),
+                                                    styled_text.clone(),
+                                                    *ratio,
+                                                    &styling_ready,
+                                                );
+                                            }
+                                        }
                                     }
                                     Err(err) => {
                                         eprintln!("[screamer] Paste failed after {}ms: {}", paste_ms, err);
@@ -1237,74 +1254,127 @@ impl App {
                     suggestion_card.try_borrow_mut(),
                     active_suggestion.try_borrow_mut(),
                 ) {
+                    use crate::styling::SuggestionKind;
+                    use crate::styling_overlay::CardAction;
+
                     if recording {
-                        // A new dictation supersedes any pending suggestion.
+                        // A new dictation supersedes any pending card.
                         if let Some(act) = active.take() {
-                            let applied = suggestion_applied(&act);
-                            finalize_suggestion(&mut card, act, applied);
+                            let label = match act.kind {
+                                SuggestionKind::Apply => {
+                                    if suggestion_applied(&act) { "applied" } else { "ignored" }
+                                }
+                                SuggestionKind::Revert => "kept",
+                            };
+                            restore_card_clipboard(&act);
+                            finalize_suggestion(&mut card, label);
                         }
                     } else if active.is_none() {
-                        // Present a freshly generated suggestion, if one is ready.
+                        // Present a freshly ready suggestion.
                         let ready = styling_ready.lock().ok().and_then(|mut s| s.take());
                         if let Some(sug) = ready {
-                            let field = crate::axtext::focused_text();
-                            let safe = field
-                                .as_deref()
-                                .map(|f| crate::styling::close_enough(f, &sug.raw))
-                                .unwrap_or(false);
-                            let hint = if safe {
-                                "Press  ⌘V  to apply   ·   ignore to keep raw"
-                            } else {
-                                "Select your text, then  ⌘V  to apply"
-                            };
-                            card.show(&sug.styled, hint);
-                            let saved = crate::paster::get_clipboard();
-                            let _ = crate::paster::set_clipboard(&sug.styled);
-                            if safe {
-                                let _ = crate::paster::select_all();
-                            }
-                            logging::log_flow_event(
-                                "styling",
-                                "shown",
-                                &format!("edit_ratio={} safe={safe}", sug.edit_ratio),
-                            );
-                            *active = Some(ActiveSuggestion {
-                                styled: sug.styled,
-                                saved_clipboard: saved,
-                                shown_at: std::time::Instant::now(),
-                            });
-                        }
-                    } else if active.is_some() {
-                        match crate::styling_overlay::take_card_action() {
-                            Some(crate::styling_overlay::CardAction::Apply) => {
-                                if let Some(act) = active.take() {
-                                    let saved = act.saved_clipboard.clone();
-                                    let _ = crate::paster::send_paste();
-                                    // Restore the clipboard after the paste lands,
-                                    // so it isn't swapped back before Cmd+V reads it.
-                                    std::thread::spawn(move || {
-                                        std::thread::sleep(std::time::Duration::from_millis(200));
-                                        crate::paster::restore_clipboard(saved);
+                            match sug.kind {
+                                SuggestionKind::Apply => {
+                                    let safe = crate::axtext::focused_text()
+                                        .as_deref()
+                                        .map(|f| crate::styling::close_enough(f, &sug.raw))
+                                        .unwrap_or(false);
+                                    let hint = if safe {
+                                        "Apply replaces your dictation"
+                                    } else {
+                                        "Select your text, then Apply"
+                                    };
+                                    card.show(&sug.styled, hint, false);
+                                    let saved = crate::paster::get_clipboard();
+                                    let _ = crate::paster::set_clipboard(&sug.styled);
+                                    if safe {
+                                        let _ = crate::paster::select_all();
+                                    }
+                                    logging::log_flow_event(
+                                        "styling",
+                                        "shown",
+                                        &format!("apply edit_ratio={} safe={safe}", sug.edit_ratio),
+                                    );
+                                    *active = Some(ActiveSuggestion {
+                                        kind: SuggestionKind::Apply,
+                                        styled: sug.styled,
+                                        raw: sug.raw,
+                                        saved_clipboard: saved,
+                                        clipboard_borrowed: true,
+                                        shown_at: std::time::Instant::now(),
                                     });
-                                    logging::log_flow_event("styling", "applied", "(click)");
-                                    card.hide();
+                                }
+                                SuggestionKind::Revert => {
+                                    card.show(
+                                        &sug.styled,
+                                        "Styled applied · keep it, or revert to raw",
+                                        true,
+                                    );
+                                    logging::log_flow_event(
+                                        "styling",
+                                        "shown",
+                                        &format!("revert edit_ratio={}", sug.edit_ratio),
+                                    );
+                                    *active = Some(ActiveSuggestion {
+                                        kind: SuggestionKind::Revert,
+                                        styled: sug.styled,
+                                        raw: sug.raw,
+                                        saved_clipboard: None,
+                                        clipboard_borrowed: false,
+                                        shown_at: std::time::Instant::now(),
+                                    });
                                 }
                             }
-                            Some(crate::styling_overlay::CardAction::Dismiss) => {
+                        }
+                    } else {
+                        // A card is up: handle clicks, ⌘V apply, or timeout.
+                        match crate::styling_overlay::take_card_action() {
+                            Some(CardAction::Apply) => {
                                 if let Some(act) = active.take() {
-                                    finalize_suggestion(&mut card, act, false);
+                                    match act.kind {
+                                        SuggestionKind::Apply => {
+                                            let saved = act.saved_clipboard.clone();
+                                            let _ = crate::paster::send_paste();
+                                            defer_restore(saved);
+                                            finalize_suggestion(&mut card, "applied");
+                                        }
+                                        SuggestionKind::Revert => {
+                                            do_revert(&act);
+                                            finalize_suggestion(&mut card, "reverted");
+                                        }
+                                    }
+                                }
+                            }
+                            Some(CardAction::Dismiss) => {
+                                if let Some(act) = active.take() {
+                                    let label = match act.kind {
+                                        SuggestionKind::Apply => "ignored",
+                                        SuggestionKind::Revert => "kept",
+                                    };
+                                    restore_card_clipboard(&act);
+                                    finalize_suggestion(&mut card, label);
                                 }
                             }
                             None => {
-                                // Dismiss the moment the user applies via ⌘V (the
-                                // field becomes the styled text), or on timeout.
-                                let act_ref = active.as_ref().unwrap();
-                                let applied = suggestion_applied(act_ref);
-                                let timed_out =
-                                    act_ref.shown_at.elapsed() >= styling_card_timeout;
-                                if applied || timed_out {
+                                let (done, label) = {
+                                    let act_ref = active.as_ref().unwrap();
+                                    let timed_out =
+                                        act_ref.shown_at.elapsed() >= styling_card_timeout;
+                                    match act_ref.kind {
+                                        SuggestionKind::Apply => {
+                                            let applied = suggestion_applied(act_ref);
+                                            (
+                                                applied || timed_out,
+                                                if applied { "applied" } else { "ignored" },
+                                            )
+                                        }
+                                        SuggestionKind::Revert => (timed_out, "kept"),
+                                    }
+                                };
+                                if done {
                                     if let Some(act) = active.take() {
-                                        finalize_suggestion(&mut card, act, applied);
+                                        restore_card_clipboard(&act);
+                                        finalize_suggestion(&mut card, label);
                                     }
                                 }
                             }
@@ -1331,18 +1401,9 @@ impl App {
     }
 }
 
-/// Dismiss a styling suggestion: log the outcome, restore the clipboard, hide.
-fn finalize_suggestion(
-    card: &mut crate::styling_overlay::SuggestionCard,
-    act: ActiveSuggestion,
-    applied: bool,
-) {
-    logging::log_flow_event(
-        "styling",
-        if applied { "applied" } else { "ignored" },
-        "",
-    );
-    crate::paster::restore_clipboard(act.saved_clipboard);
+/// Log the outcome and hide the card.
+fn finalize_suggestion(card: &mut crate::styling_overlay::SuggestionCard, label: &str) {
+    logging::log_flow_event("styling", label, "");
     card.hide();
 }
 
@@ -1351,6 +1412,36 @@ fn suggestion_applied(act: &ActiveSuggestion) -> bool {
     crate::axtext::focused_text()
         .map(|f| crate::styling::close_enough(&f, &act.styled))
         .unwrap_or(false)
+}
+
+/// Restore the clipboard the Apply card borrowed (no-op for revert cards, which
+/// never borrow it).
+fn restore_card_clipboard(act: &ActiveSuggestion) {
+    if act.clipboard_borrowed {
+        crate::paster::restore_clipboard(act.saved_clipboard.clone());
+    }
+}
+
+/// Restore a clipboard value after the paste it was set for has had time to land.
+fn defer_restore(saved: Option<String>) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        crate::paster::restore_clipboard(saved);
+    });
+}
+
+/// Replace the styled text that was pasted with the raw transcription.
+fn do_revert(act: &ActiveSuggestion) {
+    let saved = crate::paster::get_clipboard();
+    let _ = crate::paster::set_clipboard(&act.raw);
+    let safe = crate::axtext::focused_text()
+        .map(|f| crate::styling::close_enough(&f, &act.styled))
+        .unwrap_or(false);
+    if safe {
+        let _ = crate::paster::select_all();
+    }
+    let _ = crate::paster::send_paste();
+    defer_restore(saved);
 }
 
 fn start_recording_capture(

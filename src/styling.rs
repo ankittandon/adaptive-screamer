@@ -17,11 +17,38 @@ use std::sync::{Arc, Mutex};
 /// Don't show a suggestion that changed almost nothing.
 const MIN_SHOW_EDIT_RATIO: f32 = 0.02;
 
+/// Whether the card offers to apply a rewrite (card mode) or to revert one that
+/// was already pasted (inline mode).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuggestionKind {
+    Apply,
+    Revert,
+}
+
 /// A rewrite ready to present, handed from the worker thread to the main thread.
 pub struct ReadySuggestion {
     pub raw: String,
     pub styled: String,
     pub edit_ratio: f32,
+    pub kind: SuggestionKind,
+}
+
+/// Push a revert card (inline mode): the styled text already landed; offer to go
+/// back to raw.
+pub fn offer_revert(
+    raw: String,
+    styled: String,
+    edit_ratio: f32,
+    ready: &Mutex<Option<ReadySuggestion>>,
+) {
+    if let Ok(mut slot) = ready.lock() {
+        *slot = Some(ReadySuggestion {
+            raw,
+            styled,
+            edit_ratio,
+            kind: SuggestionKind::Revert,
+        });
+    }
 }
 
 pub struct StylingEngine {
@@ -109,6 +136,7 @@ pub fn request(engine: &Arc<StylingEngine>, raw: String, ready: Arc<Mutex<Option
                         raw,
                         styled: result.styled,
                         edit_ratio: ratio,
+                        kind: SuggestionKind::Apply,
                     });
                 }
             }

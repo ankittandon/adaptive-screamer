@@ -242,9 +242,17 @@ impl SuggestionCard {
         card
     }
 
-    pub fn show(&mut self, styled: &str, hint: &str) {
+    pub fn show(&mut self, styled: &str, hint: &str, is_revert: bool) {
         self.text_label.setStringValue(&NSString::from_str(styled));
         self.hint_label.setStringValue(&NSString::from_str(hint));
+        let (title, primary, secondary) = if is_revert {
+            ("✓ STYLED", "Revert to raw", "Keep")
+        } else {
+            ("✦ STYLED", "Apply  ⌘V", "Ignore")
+        };
+        self.title_label.setStringValue(&NSString::from_str(title));
+        self.apply_btn.setTitle(&NSString::from_str(primary));
+        self.ignore_btn.setTitle(&NSString::from_str(secondary));
         // Clear any stale click action from a previous card.
         let _ = take_card_action();
         self.position();
