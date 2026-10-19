@@ -1284,7 +1284,7 @@ impl App {
                                     } else {
                                         "Select your text, then Apply"
                                     };
-                                    card.show(&sug.styled, hint, false);
+                                    card.show(&sug.raw, &sug.styled, hint, false);
                                     let saved = crate::paster::get_clipboard();
                                     let _ = crate::paster::set_clipboard(&sug.styled);
                                     if safe {
@@ -1306,6 +1306,7 @@ impl App {
                                 }
                                 SuggestionKind::Revert => {
                                     card.show(
+                                        &sug.raw,
                                         &sug.styled,
                                         "Styled applied · keep it, or revert to raw",
                                         true,

@@ -9,14 +9,16 @@ use crate::config::AppAppearance;
 use crate::theme;
 use objc2::msg_send;
 use objc2::rc::Retained;
+use objc2::AllocAnyThread;
 use objc2::runtime::{AnyClass, AnyObject, ClassBuilder, Sel};
 use objc2::sel;
 use objc2_app_kit::{
-    NSBackingStoreType, NSButton, NSColor, NSLineBreakMode, NSPanel, NSScreen, NSTextAlignment,
-    NSTextField, NSView, NSVisualEffectMaterial, NSVisualEffectView, NSWindowStyleMask,
+    NSAnimationContext, NSBackingStoreType, NSButton, NSColor, NSForegroundColorAttributeName,
+    NSLineBreakMode, NSPanel, NSScreen, NSTextAlignment, NSTextField, NSView,
+    NSVisualEffectMaterial, NSVisualEffectView, NSWindowStyleMask,
 };
 use objc2_core_foundation::{CGFloat, CGPoint, CGRect, CGSize};
-use objc2_foundation::{MainThreadMarker, NSString};
+use objc2_foundation::{MainThreadMarker, NSMutableAttributedString, NSRange, NSString};
 use std::cell::Cell;
 use std::sync::OnceLock;
 
@@ -86,6 +88,68 @@ impl CardAnchor {
             _ => CardAnchor::TopRight,
         }
     }
+}
+
+/// Split into alternating runs of word and whitespace, so concatenating the
+/// tokens reproduces the input exactly.
+fn tokenize(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut cur_ws: Option<bool> = None;
+    for ch in s.chars() {
+        let ws = ch.is_whitespace();
+        if cur_ws == Some(ws) {
+            cur.push(ch);
+        } else {
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+            cur.push(ch);
+            cur_ws = Some(ws);
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// The styled text, token by token, flagged `true` where the token is new
+/// relative to `raw` (a word-level LCS diff). Concatenating the tokens gives
+/// back `styled`.
+fn styled_segments(raw: &str, styled: &str) -> Vec<(String, bool)> {
+    let a = tokenize(raw);
+    let b = tokenize(styled);
+    let (n, m) = (a.len(), b.len());
+    let mut dp = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            dp[i][j] = if a[i] == b[j] {
+                dp[i + 1][j + 1] + 1
+            } else {
+                dp[i + 1][j].max(dp[i][j + 1])
+            };
+        }
+    }
+    let mut segs = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < n && j < m {
+        if a[i] == b[j] {
+            segs.push((b[j].clone(), false));
+            i += 1;
+            j += 1;
+        } else if dp[i + 1][j] >= dp[i][j + 1] {
+            i += 1;
+        } else {
+            segs.push((b[j].clone(), true));
+            j += 1;
+        }
+    }
+    while j < m {
+        segs.push((b[j].clone(), true));
+        j += 1;
+    }
+    segs
 }
 
 pub struct SuggestionCard {
@@ -242,8 +306,8 @@ impl SuggestionCard {
         card
     }
 
-    pub fn show(&mut self, styled: &str, hint: &str, is_revert: bool) {
-        self.text_label.setStringValue(&NSString::from_str(styled));
+    pub fn show(&mut self, raw: &str, styled: &str, hint: &str, is_revert: bool) {
+        self.set_styled_text(raw, styled);
         self.hint_label.setStringValue(&NSString::from_str(hint));
         let (title, primary, secondary) = if is_revert {
             ("✓ STYLED", "Revert to raw", "Keep")
@@ -255,10 +319,47 @@ impl SuggestionCard {
         self.ignore_btn.setTitle(&NSString::from_str(secondary));
         // Clear any stale click action from a previous card.
         let _ = take_card_action();
+
         self.position();
         self.visible = true;
+
+        // Entrance: fade in and slide gently into place.
+        let final_origin = self.panel.frame().origin;
+        self.panel.setAlphaValue(0.0);
+        self.panel
+            .setFrameOrigin(CGPoint::new(final_origin.x, final_origin.y + 10.0));
         self.panel.orderFrontRegardless();
-        self.panel.setAlphaValue(1.0);
+        unsafe {
+            NSAnimationContext::beginGrouping();
+            let ctx = NSAnimationContext::currentContext();
+            ctx.setDuration(0.18);
+            let animator: *mut objc2::runtime::AnyObject = msg_send![&*self.panel, animator];
+            let _: () = msg_send![animator, setAlphaValue: 1.0f64];
+            let _: () = msg_send![animator, setFrameOrigin: final_origin];
+            NSAnimationContext::endGrouping();
+        }
+    }
+
+    /// Set the card text to `styled`, tinting the words that differ from `raw`
+    /// so you can see at a glance what the styling changed.
+    fn set_styled_text(&self, raw: &str, styled: &str) {
+        let ns = NSString::from_str(styled);
+        let attr = NSMutableAttributedString::initWithString(NSMutableAttributedString::alloc(), &ns);
+        let base = theme::overlay_transcript_text(self.appearance);
+        let tint = theme::overlay_bar_color(self.appearance, 1.0);
+        let total = styled.encode_utf16().count();
+        unsafe {
+            let _: () = msg_send![&*attr, addAttribute: NSForegroundColorAttributeName, value: &*base, range: NSRange::new(0, total)];
+            let mut off = 0usize;
+            for (tok, inserted) in styled_segments(raw, styled) {
+                let len = tok.encode_utf16().count();
+                if inserted && !tok.trim().is_empty() {
+                    let _: () = msg_send![&*attr, addAttribute: NSForegroundColorAttributeName, value: &*tint, range: NSRange::new(off, len)];
+                }
+                off += len;
+            }
+        }
+        self.text_label.setAttributedStringValue(&attr);
     }
 
     pub fn hide(&mut self) {
