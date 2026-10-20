@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 
 mod gate;
 pub use gate::{assess, GateConfig, GateDecision};
+mod slop;
+pub use slop::{slop_analyze, slop_score, SlopBreakdown};
 
 const DEFAULT_MODEL: &str = "accounts/fireworks/models/deepseek-v4p1-flash-1017";
 const DEFAULT_ENDPOINT: &str = "https://api.fireworks.ai/inference/v1/chat/completions";
@@ -100,6 +102,14 @@ Do NOT use em dashes or en dashes; rewrite those as commas, periods, or \
 parentheses.
 - Use standard sentence case: capitalize the first word of every sentence and \
 proper nouns, consistently, even for short fragments.
+- Do not make it sound like AI. Never introduce any of these: em or en dashes; \
+\"not X, but Y\" or \"it's not X, it's Y\" constructions; rule-of-three lists; a \
+rhetorical question you then answer; signpost phrases like \"here's the thing\" \
+or \"at the end of the day\"; sentence fragments for emphasis; or buzzwords like \
+\"delve\", \"seamless\", \"leverage\", \"utilize\", \"robust\", \"tapestry\". \
+Avoid stitching clauses together with \", which\" or \", so\".
+- Keep the speaker's natural rhythm and vary sentence length. Do not flatten the \
+voice into generic, even prose.
 - If the text is already clean, return it unchanged.
 - Output ONLY the rewritten text. No preamble, quotes, labels, or commentary.";
 
