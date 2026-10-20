@@ -39,3 +39,9 @@ resources/menubar_icon@2x.png
 
 # Local telemetry export output
 labeled.jsonl
+
+# Python eval suite local artifacts
+evals/.venv/
+evals/*.egg-info/
+evals/.pytest_cache/
+*.pyc

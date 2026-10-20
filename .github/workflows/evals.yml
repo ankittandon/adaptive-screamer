@@ -1,0 +1,48 @@
+name: evals
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "evals/**"
+      - ".github/workflows/evals.yml"
+      - "crates/screamer-styling/src/slop.rs"
+  pull_request:
+    paths:
+      - "evals/**"
+      - ".github/workflows/evals.yml"
+      - "crates/screamer-styling/src/slop.rs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the eval suite
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Slop parity (fast gate — must match the Rust detector)
+        run: pytest -q test_slop_parity.py
+
+      - name: Run the Eval Protocol suite on the sample dataset
+        run: pytest -q test_styling.py

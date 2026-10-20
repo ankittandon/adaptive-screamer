@@ -1,0 +1,23 @@
+[project]
+name = "screamer-evals"
+version = "0.1.0"
+description = "Eval Protocol suite for the Screamer styling layer."
+requires-python = ">=3.10"
+dependencies = [
+    "eval-protocol>=0.3",
+    "pytest>=8",
+    # Pin the legitimate Model Context Protocol SDK line. eval-protocol only
+    # asks for `mcp>=1.9.2`, and a fresh resolve picks up a suspicious `mcp`
+    # 2.3.0 on PyPI that depends on `httpx2`/`mcp-types` and lacks
+    # `streamablehttp_client` (not the real SDK's deps). <2 keeps us on the
+    # genuine 1.x line. Revisit if the real SDK ships a 2.x.
+    "mcp>=1.9.2,<2",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["adapter"]
+packages = ["scorers"]
