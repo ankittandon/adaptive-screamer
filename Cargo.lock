@@ -1471,6 +1471,7 @@ dependencies = [
  "screamer-whisper",
  "serde",
  "serde_json",
+ "ureq",
  "whisper-rs",
 ]
 

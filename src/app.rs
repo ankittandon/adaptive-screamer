@@ -959,6 +959,9 @@ impl App {
 
         // ── Opt-in telemetry (off unless telemetry_enabled is set in config.json) ──
         let telemetry = crate::telemetry::init(&Config::load());
+        // Background Braintrust sink: tails the local log and ships traces to the
+        // cloud on its own thread. Fully decoupled — never touches dictation.
+        crate::braintrust::start(&Config::load());
         let telemetry_dict_release = telemetry.clone();
         let telemetry_fix = telemetry;
 

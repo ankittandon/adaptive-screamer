@@ -101,6 +101,7 @@ screamer-telemetry = { path = "crates/screamer-telemetry" }
 screamer-whisper = { path = "crates/screamer-whisper" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+ureq = { version = "2", features = ["json", "tls"] }
 dirs = "6"
 libc = "0.2"
 log = "0.4"

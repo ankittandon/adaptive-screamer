@@ -98,6 +98,22 @@ pub struct Config {
     /// Frontmost-app bundle ids where styling never runs (raw pastes instantly).
     #[serde(default = "default_styling_skip_apps")]
     pub styling_skip_apps: Vec<String>,
+    /// Opt-in: mirror the local telemetry log to Braintrust (cloud) on a
+    /// background thread. Requires `telemetry_enabled` (there must be a log to
+    /// ship) and a Braintrust API key. Never touches the dictation hot path.
+    /// Default off.
+    #[serde(default)]
+    pub braintrust_enabled: bool,
+    /// Braintrust project id (UUID) that traces are written to.
+    #[serde(default = "default_braintrust_project")]
+    pub braintrust_project: String,
+    /// Braintrust API base, overridable for self-hosted / EU regions.
+    #[serde(default = "default_braintrust_endpoint")]
+    pub braintrust_endpoint: String,
+    /// Also upload each dictation's audio clip to Braintrust as an attachment.
+    /// Only has effect when `braintrust_enabled` is set. Default off.
+    #[serde(default)]
+    pub braintrust_upload_audio: bool,
 }
 
 impl Default for Config {
@@ -118,8 +134,20 @@ impl Default for Config {
             styling_card_position: default_styling_card_position(),
             styling_mode: default_styling_mode(),
             styling_skip_apps: default_styling_skip_apps(),
+            braintrust_enabled: false,
+            braintrust_project: default_braintrust_project(),
+            braintrust_endpoint: default_braintrust_endpoint(),
+            braintrust_upload_audio: false,
         }
     }
+}
+
+fn default_braintrust_project() -> String {
+    "92bf6a63-16e3-450c-ba02-2f3247e7ef92".to_string()
+}
+
+fn default_braintrust_endpoint() -> String {
+    "https://api.braintrust.dev/v1".to_string()
 }
 
 fn default_styling_card_timeout_secs() -> u64 {
@@ -387,6 +415,10 @@ mod tests {
             styling_card_position: "bottom_center".to_string(),
             styling_mode: "card".to_string(),
             styling_skip_apps: vec!["com.apple.Terminal".to_string()],
+            braintrust_enabled: true,
+            braintrust_project: "proj-123".to_string(),
+            braintrust_endpoint: "https://api.braintrust.dev/v1".to_string(),
+            braintrust_upload_audio: true,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();
@@ -400,6 +432,9 @@ mod tests {
         assert!(parsed.accessibility_helper_dismissed);
         assert!(parsed.telemetry_enabled);
         assert_eq!(parsed.fix_hotkey, "right_command");
+        assert!(parsed.braintrust_enabled);
+        assert_eq!(parsed.braintrust_project, "proj-123");
+        assert!(parsed.braintrust_upload_audio);
     }
 
     #[test]

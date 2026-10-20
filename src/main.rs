@@ -1,5 +1,6 @@
 mod app;
 mod axtext;
+mod braintrust;
 mod branding;
 mod config;
 mod hotkey;
