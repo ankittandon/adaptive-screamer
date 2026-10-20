@@ -12,12 +12,18 @@
 //! cursor, say) merges into the same row rather than duplicating it. A
 //! byte-offset cursor (`braintrust.cursor`) is kept only to avoid re-POSTing the
 //! whole log every cycle.
+//!
+//! When `braintrust_upload_audio` is set, each dictation's WAV clip is uploaded
+//! as a Braintrust attachment and referenced on the event. The upload is
+//! best-effort (text always ships regardless) and uses the same signed-URL flow
+//! as the Braintrust SDK: POST /attachment -> PUT the bytes to the signed URL ->
+//! POST /attachment/status.
 
 use crate::config::Config;
 use crate::logging;
 use crate::telemetry::telemetry_dir;
 use screamer_styling::slop_score;
-use screamer_telemetry::{Event, LabelSource};
+use screamer_telemetry::{DictationRecord, Event, LabelSource};
 use serde_json::{json, Value};
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom};
@@ -29,6 +35,8 @@ const CURSOR_FILE: &str = "braintrust.cursor";
 /// How often the reconciler checks the log for new lines.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(20);
+/// Longer timeout for the object-store PUT (audio bytes).
+const UPLOAD_TIMEOUT: Duration = Duration::from_secs(60);
 /// Max events shipped per cycle (and per insert request). Bounds a large first
 /// backfill; the rest ships on the next cycles.
 const BATCH_MAX: usize = 100;
@@ -87,21 +95,29 @@ pub fn start(config: &Config) {
         eprintln!("[screamer] Braintrust sink off: braintrust_project is empty.");
         return;
     }
-    if config.braintrust_upload_audio {
-        // Reserved for phase 2; text ships now regardless.
-        eprintln!(
-            "[screamer] Braintrust: audio upload is a later phase; shipping text and metadata only for now."
-        );
-    }
     let base = config.braintrust_endpoint.trim_end_matches('/');
     let endpoint = format!("{base}/project_logs/{project}/insert");
+    // Attachment endpoints live at the host root (e.g. .../attachment), not under /v1.
+    let api_root = base.strip_suffix("/v1").unwrap_or(base).trim_end_matches('/').to_string();
+
+    let upload_audio = config.braintrust_upload_audio;
+    let org = config.braintrust_org.trim().to_string();
+    if upload_audio && org.is_empty() {
+        eprintln!("[screamer] Braintrust: audio upload needs braintrust_org; shipping text only.");
+    }
 
     let sink = Sink {
         endpoint,
+        api_root,
         api_key,
+        org,
+        upload_audio,
         dir: telemetry_dir(),
     };
-    eprintln!("[screamer] Braintrust sink on: shipping telemetry to project {project}");
+    eprintln!(
+        "[screamer] Braintrust sink on: shipping telemetry to project {project} (audio: {})",
+        if upload_audio { "on" } else { "off" }
+    );
     std::thread::Builder::new()
         .name("braintrust-sink".into())
         .spawn(move || sink.run())
@@ -111,8 +127,12 @@ pub fn start(config: &Config) {
 struct Sink {
     /// Full insert URL: `{endpoint}/project_logs/{project}/insert`.
     endpoint: String,
+    /// Host root for attachment endpoints (`/attachment`, `/attachment/status`).
+    api_root: String,
     api_key: String,
-    /// Telemetry directory holding `records.jsonl` and the cursor.
+    org: String,
+    upload_audio: bool,
+    /// Telemetry directory holding `records.jsonl`, `clips/`, and the cursor.
     dir: PathBuf,
 }
 
@@ -127,6 +147,7 @@ enum Ship {
 impl Sink {
     fn run(self) {
         let agent = ureq::AgentBuilder::new().timeout(HTTP_TIMEOUT).build();
+        let uploader = ureq::AgentBuilder::new().timeout(UPLOAD_TIMEOUT).build();
         let records = self.dir.join(RECORDS_FILE);
         let cursor_path = self.dir.join(CURSOR_FILE);
         let mut cursor = read_cursor(&cursor_path);
@@ -149,14 +170,20 @@ impl Sink {
                 continue;
             }
 
-            match self.ship(&agent, &events) {
+            // Build payload (uploads audio attachments as a side effect when enabled).
+            let payload: Vec<Value> = events
+                .iter()
+                .filter_map(|ev| self.build_event(&uploader, ev))
+                .collect();
+
+            match self.ship(&agent, &payload) {
                 Ship::Ok => {
                     cursor = next_cursor;
                     write_cursor(&cursor_path, cursor);
                     logging::log_flow_event(
                         "braintrust",
                         "shipped",
-                        &format!("{} events (offset {cursor})", events.len()),
+                        &format!("{} events (offset {cursor})", payload.len()),
                     );
                     backoff = POLL_INTERVAL;
                 }
@@ -176,7 +203,118 @@ impl Sink {
         }
     }
 
+    /// Map one event to a Braintrust log event. For dictations with audio upload
+    /// enabled, best-effort upload the clip and attach a reference; text always
+    /// ships regardless of whether the audio upload succeeds.
+    fn build_event(&self, uploader: &ureq::Agent, ev: &Event) -> Option<Value> {
+        let mut v = to_braintrust(ev)?;
+        if self.upload_audio && !self.org.is_empty() {
+            if let Event::Dictation(d) = ev {
+                if let Some(att) = self.upload_clip(uploader, d) {
+                    if let Some(meta) = v.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+                        meta.insert("audio".to_string(), att);
+                    }
+                }
+            }
+        }
+        Some(v)
+    }
+
+    /// Upload `clips/<id>.wav` as a Braintrust attachment and return the
+    /// reference object to embed on the event. Best-effort: `None` on any
+    /// failure (logged), so text still ships. Up to two attempts to ride out a
+    /// transient blip; a persistent failure drops only that clip's audio.
+    fn upload_clip(&self, uploader: &ureq::Agent, d: &DictationRecord) -> Option<Value> {
+        let path = self.dir.join(&d.audio_path);
+        let data = match fs::read(&path) {
+            Ok(b) => b,
+            Err(_) => return None, // clip missing (e.g. pruned) — nothing to upload
+        };
+        // Deterministic key -> idempotent re-upload overwrites the same object.
+        let key = format!("screamer/{}.wav", d.id);
+        let filename = format!("{}.wav", d.id);
+
+        for attempt in 1..=2 {
+            match self.try_upload(uploader, &key, &filename, &data) {
+                Ok(()) => {
+                    return Some(json!({
+                        "type": "braintrust_attachment",
+                        "filename": filename,
+                        "content_type": "audio/wav",
+                        "key": key,
+                    }));
+                }
+                Err(e) => {
+                    logging::log_flow_event(
+                        "braintrust",
+                        "audio",
+                        &format!("clip {} upload failed (attempt {attempt}): {e}", d.id),
+                    );
+                }
+            }
+        }
+        None
+    }
+
+    /// The signed-URL attachment flow (mirrors the Braintrust SDK):
+    /// POST /attachment -> PUT bytes to the signed URL -> POST /attachment/status.
+    fn try_upload(
+        &self,
+        uploader: &ureq::Agent,
+        key: &str,
+        filename: &str,
+        data: &[u8],
+    ) -> Result<(), String> {
+        let meta: Value = uploader
+            .post(&format!("{}/attachment", self.api_root))
+            .set("Authorization", &format!("Bearer {}", self.api_key))
+            .set("Content-Type", "application/json")
+            .send_json(json!({
+                "key": key,
+                "filename": filename,
+                "content_type": "audio/wav",
+                "org_id": self.org,
+            }))
+            .map_err(stringify_err)?
+            .into_json()
+            .map_err(|e| e.to_string())?;
+
+        let signed = meta
+            .get("signedUrl")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("no signedUrl in response: {meta}"))?;
+
+        let mut put = uploader.put(signed);
+        if let Some(headers) = meta.get("headers").and_then(|v| v.as_object()) {
+            for (k, v) in headers {
+                if let Some(s) = v.as_str() {
+                    put = put.set(k, s);
+                }
+            }
+        }
+        if signed.contains("blob.core.windows.net") {
+            put = put.set("x-ms-blob-type", "BlockBlob");
+        }
+        put.send_bytes(data).map_err(stringify_err)?;
+
+        // Best-effort status update so the attachment shows as complete in the UI.
+        let _ = uploader
+            .post(&format!("{}/attachment/status", self.api_root))
+            .set("Authorization", &format!("Bearer {}", self.api_key))
+            .set("Content-Type", "application/json")
+            .send_json(json!({
+                "key": key,
+                "org_id": self.org,
+                "status": { "upload_status": "done" },
+            }));
+
+        Ok(())
+    }
+
     fn ship(&self, agent: &ureq::Agent, events: &[Value]) -> Ship {
+        if events.is_empty() {
+            return Ship::Ok;
+        }
         let body = json!({ "events": events });
         match agent
             .post(&self.endpoint)
@@ -204,8 +342,23 @@ impl Sink {
     }
 }
 
+fn stringify_err(e: ureq::Error) -> String {
+    match e {
+        ureq::Error::Status(code, resp) => {
+            let detail = resp
+                .into_string()
+                .unwrap_or_default()
+                .chars()
+                .take(200)
+                .collect::<String>();
+            format!("HTTP {code}: {detail}")
+        }
+        other => other.to_string(),
+    }
+}
+
 /// Map one telemetry event to a Braintrust log event, or `None` to skip it.
-/// Free function: phase-1 mapping needs no sink state.
+/// Text only; audio is attached by `Sink::build_event`.
 fn to_braintrust(ev: &Event) -> Option<Value> {
     match ev {
         Event::Dictation(d) => Some(json!({
@@ -224,8 +377,6 @@ fn to_braintrust(ev: &Event) -> Option<Value> {
                 "slop_raw": slop_score(&d.raw_text),
                 "slop_pasted": slop_score(&d.pasted_text),
             },
-            // Phase 2: upload `clips/<id>.wav` as a Braintrust attachment and
-            // reference it here when `braintrust_upload_audio` is set.
         })),
         Event::Label(l) => {
             let source = match l.label_source {
@@ -248,14 +399,14 @@ fn to_braintrust(ev: &Event) -> Option<Value> {
     }
 }
 
-/// Read complete lines of `records.jsonl` past `cursor`, map them to Braintrust
-/// events, and return them with the byte offset to persist once they ship.
+/// Read complete lines of `records.jsonl` past `cursor`, parse them to events,
+/// and return them with the byte offset to persist once they ship.
 ///
 /// Only whole lines (terminated by `\n`) are consumed, so a torn final write is
 /// never shipped; it is picked up once complete. A line that is non-empty but
 /// fails to parse is skipped yet still consumed, so a single corrupt line cannot
 /// wedge the cursor. Capped at `BATCH_MAX` events per call.
-fn collect_since(records: &Path, cursor: u64) -> io::Result<(Vec<Value>, u64)> {
+fn collect_since(records: &Path, cursor: u64) -> io::Result<(Vec<Event>, u64)> {
     let mut file = fs::File::open(records)?;
     let len = file.metadata()?.len();
     // If the file shrank (shouldn't — the log is append-only), start over; the
@@ -281,9 +432,7 @@ fn collect_since(records: &Path, cursor: u64) -> io::Result<(Vec<Value>, u64)> {
             let trimmed = text.trim();
             if !trimmed.is_empty() {
                 if let Ok(ev) = serde_json::from_str::<Event>(trimmed) {
-                    if let Some(bt) = to_braintrust(&ev) {
-                        events.push(bt);
-                    }
+                    events.push(ev);
                 }
             }
         }

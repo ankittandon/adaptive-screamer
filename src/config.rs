@@ -107,6 +107,9 @@ pub struct Config {
     /// Braintrust project id (UUID) that traces are written to.
     #[serde(default = "default_braintrust_project")]
     pub braintrust_project: String,
+    /// Braintrust org id (UUID). Required only for audio attachment uploads.
+    #[serde(default = "default_braintrust_org")]
+    pub braintrust_org: String,
     /// Braintrust API base, overridable for self-hosted / EU regions.
     #[serde(default = "default_braintrust_endpoint")]
     pub braintrust_endpoint: String,
@@ -136,6 +139,7 @@ impl Default for Config {
             styling_skip_apps: default_styling_skip_apps(),
             braintrust_enabled: false,
             braintrust_project: default_braintrust_project(),
+            braintrust_org: default_braintrust_org(),
             braintrust_endpoint: default_braintrust_endpoint(),
             braintrust_upload_audio: false,
         }
@@ -144,6 +148,10 @@ impl Default for Config {
 
 fn default_braintrust_project() -> String {
     "92bf6a63-16e3-450c-ba02-2f3247e7ef92".to_string()
+}
+
+fn default_braintrust_org() -> String {
+    "45a04b97-8f56-4ad9-b5be-bc9eed436c06".to_string()
 }
 
 fn default_braintrust_endpoint() -> String {
@@ -417,6 +425,7 @@ mod tests {
             styling_skip_apps: vec!["com.apple.Terminal".to_string()],
             braintrust_enabled: true,
             braintrust_project: "proj-123".to_string(),
+            braintrust_org: "org-123".to_string(),
             braintrust_endpoint: "https://api.braintrust.dev/v1".to_string(),
             braintrust_upload_audio: true,
         };
