@@ -6,6 +6,14 @@
 //! the habits that are reliably detectable without parsing: em/en dashes,
 //! buzzwords, signpost phrases, over-joined clauses, and "not X, but Y". Harder
 //! ones (rule-of-three, rhetorical-question-then-answer) are left for later.
+//!
+//! The buzzword list and the "excess vocabulary" framing draw on Kobak et al.,
+//! "Delving into LLM-assisted writing in biomedical publications through excess
+//! vocabulary," Science Advances 11(27), 2025 (arXiv:2406.07016): the LLM tells
+//! are predominantly style words (verbs/adjectives like "delve", "intricate",
+//! "meticulous"), found by their abrupt post-ChatGPT frequency jump. See
+//! `docs/styling-guide.md`. Flagged words fade once publicized, so treat this
+//! list as living, not fixed.
 
 /// Buzzwords that read as AI/corporate filler. Matched as whole words.
 const BUZZWORDS: &[&str] = &[
