@@ -20,6 +20,9 @@ dependencies = [
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[project.scripts]
+screamer-push-scores = "push_scores:main"
+
 [tool.setuptools]
-py-modules = ["adapter"]
+py-modules = ["adapter", "push_scores"]
 packages = ["scorers"]

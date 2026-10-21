@@ -110,3 +110,13 @@ def slop_score(text: str) -> float:
     per = weighted / (b["words"] / 1000.0)
     # Match Rust f32::round (half away from zero) to one decimal place.
     return math.floor(per * 10.0 + 0.5) / 10.0
+
+
+def slop_to_score(slop: float) -> float:
+    """Map a per-1,000-words slop value to a 0..1 score where higher is better.
+
+    0 slop -> 1.0, 15 -> 0.5, >= 30 -> 0.0. Human prose is typically well under
+    ~15 (see docs/styling-guide.md), so 0.5 is a lenient floor. Shared by the
+    eval suite and the Braintrust score push so they agree.
+    """
+    return max(0.0, 1.0 - slop / 30.0)

@@ -57,5 +57,23 @@ SCREAMER_EVAL_DATASET="$PWD/my_traces.jsonl" pytest
 ```
 
 Braintrust is the trace **store/browser** (see `src/braintrust.rs`); these evals
-read the local export so they stay offline. Pushing eval scores back to
-Braintrust alongside the traces is a later follow-up.
+read the local export so they stay offline.
+
+## Push eval scores to Braintrust
+
+`screamer-push-scores` merges the eval scores onto the matching Braintrust trace
+rows (by record id), so they sit alongside the text and audio the app shipped:
+
+```bash
+# slop only (free, offline scoring; still writes to Braintrust)
+screamer-push-scores --dataset my_traces.jsonl
+# add the LLM judges (needs a Fireworks key)
+screamer-push-scores --dataset my_traces.jsonl --judges
+# preview without sending
+screamer-push-scores --dataset my_traces.jsonl --dry-run
+```
+
+The dataset ids must match the Braintrust rows, so use your real export (above),
+not the sample. Pushes `slop`, and with `--judges` also `intent_fidelity` and
+`quality`, all as 0..1 Braintrust scores. Braintrust key from
+`BRAINTRUST_API_KEY` or `braintrust.key`; project from `BRAINTRUST_PROJECT`.

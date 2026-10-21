@@ -30,7 +30,7 @@ from eval_protocol.pytest.default_no_op_rollout_processor import NoOpRolloutProc
 
 from adapter import screamer_dataset_adapter
 from scorers.judge import judge_intent, judge_quality
-from scorers.slop import slop_score
+from scorers.slop import slop_score, slop_to_score
 
 DATASET = os.environ.get(
     "SCREAMER_EVAL_DATASET",
@@ -44,15 +44,6 @@ def _text(row: EvaluationRow, role: str) -> str:
     if isinstance(content, list):  # content parts
         content = "".join(getattr(p, "text", "") for p in content)
     return content or ""
-
-
-def _slop_to_score(slop: float) -> float:
-    """Per-1000-words slop -> 0..1 (higher is better).
-
-    0 slop -> 1.0, 15 -> 0.5, >= 30 -> 0.0. Human prose is typically well under
-    ~15 (see docs/styling-guide.md), so 0.5 is a lenient floor.
-    """
-    return max(0.0, 1.0 - slop / 30.0)
 
 
 @evaluation_test(
@@ -71,7 +62,7 @@ def test_styled_slop(row: EvaluationRow) -> EvaluationRow:
     raw = _text(row, "user")
     s_styled = slop_score(styled)
     s_raw = slop_score(raw)
-    score = _slop_to_score(s_styled)
+    score = slop_to_score(s_styled)
     row.evaluation_result = EvaluateResult(
         score=score,
         is_score_valid=True,
@@ -84,7 +75,7 @@ def test_styled_slop(row: EvaluationRow) -> EvaluationRow:
                 data={"slop_per_1000": s_styled},
             ),
             "slop_raw": MetricResult(
-                score=_slop_to_score(s_raw),
+                score=slop_to_score(s_raw),
                 is_score_valid=True,
                 reason=f"{s_raw:.1f} per 1000 words",
                 data={"slop_per_1000": s_raw},
