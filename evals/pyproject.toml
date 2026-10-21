@@ -6,11 +6,12 @@ requires-python = ">=3.10"
 dependencies = [
     "eval-protocol>=0.3",
     "pytest>=8",
-    # Pin the legitimate Model Context Protocol SDK line. eval-protocol only
-    # asks for `mcp>=1.9.2`, and a fresh resolve picks up a suspicious `mcp`
-    # 2.3.0 on PyPI that depends on `httpx2`/`mcp-types` and lacks
-    # `streamablehttp_client` (not the real SDK's deps). <2 keeps us on the
-    # genuine 1.x line. Revisit if the real SDK ships a 2.x.
+    # Pin to the mcp 1.x line. mcp 2.x (2.0.0+) is a real, breaking major of the
+    # MCP SDK (it splits types into `mcp-types`, switches httpx -> `httpx2`, and
+    # moves `streamablehttp_client` out of `mcp.client.streamable_http`). But
+    # eval-protocol still imports the 1.x API and declares only `mcp>=1.9.2` with
+    # no upper bound, so a fresh resolve grabs 2.x and fails at import. <2 keeps
+    # us compatible until eval-protocol supports mcp 2.x; drop it then.
     "mcp>=1.9.2,<2",
 ]
 
