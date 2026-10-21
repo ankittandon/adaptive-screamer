@@ -4,10 +4,6 @@
 
 # Screamer
 
-Adaptive Screamer is a fork of [suvamsh/screamer](https://github.com/suvamsh/screamer) (MIT). It adds opt-in dictation telemetry so a Whisper model can be fine-tuned on my own voice and vocabulary.
-
-**Offline dictation and ambient notetaking for macOS.**
-
 [www.screamer.app](https://www.screamer.app)
 
 Push-to-talk transcription. Hold a key, speak, release, and your text is pasted instantly.
