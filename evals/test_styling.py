@@ -1,12 +1,18 @@
 """Eval Protocol suite for the Screamer styling layer.
 
-These score *stored* dictation traces — they do not call a model. The
-`NoOpRolloutProcessor` passes each row straight through to the scorer, so the
+These score *stored* dictation traces — they do not call a model to generate.
+The `NoOpRolloutProcessor` passes each row straight through to the scorer, so the
 assistant message is the text the styling layer actually pasted.
 
 Dataset: an `ExportRow` JSONL from `screamer-telemetry-export`. Point at your own
 export with the `SCREAMER_EVAL_DATASET` env var; otherwise the committed
 synthetic sample is used so the suite runs anywhere.
+
+Metrics:
+- `test_styled_slop` — rules-based, offline, deterministic (slop detector).
+- `test_intent_fidelity`, `test_quality` — Fireworks LLM judges (scorers/judge.py).
+  They run only when a Fireworks key is available; with none the rows come back
+  invalid so a keyless run (e.g. CI) degrades gracefully instead of failing.
 
     cd evals && pip install -e . && pytest
 """
@@ -17,13 +23,13 @@ synthetic sample is used so the suite runs anywhere.
 
 import os
 from pathlib import Path
-from typing import Any, Dict
 
 from eval_protocol.models import EvaluateResult, EvaluationRow, MetricResult
 from eval_protocol.pytest import evaluation_test
 from eval_protocol.pytest.default_no_op_rollout_processor import NoOpRolloutProcessor
 
 from adapter import screamer_dataset_adapter
+from scorers.judge import judge_intent, judge_quality
 from scorers.slop import slop_score
 
 DATASET = os.environ.get(
@@ -38,10 +44,6 @@ def _text(row: EvaluationRow, role: str) -> str:
     if isinstance(content, list):  # content parts
         content = "".join(getattr(p, "text", "") for p in content)
     return content or ""
-
-
-def _dataset_info(row: EvaluationRow) -> Dict[str, Any]:
-    return (row.input_metadata.dataset_info if row.input_metadata else None) or {}
 
 
 def _slop_to_score(slop: float) -> float:
@@ -93,11 +95,13 @@ def test_styled_slop(row: EvaluationRow) -> EvaluationRow:
 
 
 # ---------------------------------------------------------------------------
-# Scaffolds. The two metrics that matter most — did the rewrite keep the
-# speaker's meaning, and is it actually better writing — need an LLM judge, not
-# a rules pass. These are real EP tests wired to the same data so the harness
-# shape is complete; they emit a placeholder, mark the score invalid, and never
-# gate CI (passed_threshold=0.0) until the judge lands.
+# LLM judges. The two metrics that matter most — did the rewrite keep the
+# speaker's meaning, and is it actually good writing — are scored by a Fireworks
+# judge (scorers/judge.py). They run only when a Fireworks key is available; with
+# no key the rows come back invalid so a keyless run (e.g. CI) degrades
+# gracefully. passed_threshold is 0.0 for now (informational): the scores are
+# real, but we have not gathered enough runs to set a meaningful gate — raise it
+# once we have.
 # ---------------------------------------------------------------------------
 
 
@@ -109,22 +113,17 @@ def test_styled_slop(row: EvaluationRow) -> EvaluationRow:
     passed_threshold=0.0,
 )
 def test_intent_fidelity(row: EvaluationRow) -> EvaluationRow:
-    """SCAFFOLD — does the styled text preserve the speaker's meaning and intent?
+    """Does the styled text preserve the speaker's meaning and intent?
 
-    The real check is an LLM judge comparing raw (user) vs styled (assistant):
-    did the rewrite add, drop, or alter a claim; turn a question into a
-    statement; harden a hedge; resolve an ambiguity the speaker left open? See
-    the intent discussion in docs/styling-guide.md.
-
-    TODO: replace the placeholder below with a Fireworks LLM-judge call. For now
-    it is marked invalid so it never counts toward pass/fail.
+    Fireworks judge comparing raw (user) vs styled (assistant). See judge.py.
     """
-    edit_ratio = _dataset_info(row).get("edit_ratio")
-    placeholder = 1.0 - float(edit_ratio) if isinstance(edit_ratio, (int, float)) else 1.0
+    raw = _text(row, "user")
+    styled = _text(row, "assistant")
+    j = judge_intent(raw, styled)
     row.evaluation_result = EvaluateResult(
-        score=placeholder,
-        is_score_valid=False,
-        reason="scaffold: intent fidelity needs an LLM judge (not yet implemented)",
+        score=j.score,
+        is_score_valid=j.valid,
+        reason=j.reason,
     )
     return row
 
@@ -137,17 +136,17 @@ def test_intent_fidelity(row: EvaluationRow) -> EvaluationRow:
     passed_threshold=0.0,
 )
 def test_quality(row: EvaluationRow) -> EvaluationRow:
-    """SCAFFOLD — is the styled text genuinely better writing (clearer, tighter)?
+    """Is the styled text genuinely good writing (clear, tight, not AI-sloppy)?
 
-    Beyond "not sloppy": concision, clarity, and whether it reads like something
-    the speaker would have written with time. This also wants an LLM judge.
-
-    TODO: replace with an LLM-judge call. Marked invalid until then.
+    Fireworks judge scoring the styled (assistant) text against the original. See
+    judge.py.
     """
+    raw = _text(row, "user")
     styled = _text(row, "assistant")
+    j = judge_quality(raw, styled)
     row.evaluation_result = EvaluateResult(
-        score=_slop_to_score(slop_score(styled)),  # placeholder proxy only
-        is_score_valid=False,
-        reason="scaffold: writing-quality judge not yet implemented",
+        score=j.score,
+        is_score_valid=j.valid,
+        reason=j.reason,
     )
     return row

@@ -8,15 +8,22 @@ model — so they run offline and deterministically.
 
 - `scorers/slop.py` — Python port of the Rust slop detector
   (`crates/screamer-styling/src/slop.rs`). Keep the two in sync.
+- `scorers/judge.py` — Fireworks LLM judges for intent fidelity and writing
+  quality (temperature 0, returns a 0..1 score + reason).
 - `adapter.py` — turns a telemetry `ExportRow` into an EP `EvaluationRow`
   (`user` = raw transcript, `assistant` = pasted/styled text, `ground_truth` =
   settled text).
 - `test_styling.py` — the EP tests:
-  - `test_styled_slop` — real, offline: the pasted text should read human
+  - `test_styled_slop` — rules-based, offline: the pasted text should read human
     (low slop). Gated at a lenient 0.5.
-  - `test_intent_fidelity`, `test_quality` — **scaffolds**. The two metrics that
-    matter most need an LLM judge; these are wired to the data and emit an
-    invalid placeholder (never gate CI) until the judge lands. See the TODOs.
+  - `test_intent_fidelity` — LLM judge: did the rewrite keep the speaker's
+    meaning and intent (claims, speech act, hedging)?
+  - `test_quality` — LLM judge: is the styled text genuinely good writing
+    (clear, tight, not AI-sloppy)?
+  - The two judges run only when a Fireworks key is available; with none the
+    rows come back invalid (the run still completes). They are informational for
+    now (`passed_threshold=0.0`) — the scores are real, but we haven't gathered
+    enough to set a meaningful gate.
 - `test_slop_parity.py` — plain pytest (no EP needed) proving the slop port
   matches the Rust unit tests. The hermetic CI gate.
 - `data/sample.jsonl` — synthetic traces so the suite runs anywhere.
@@ -26,9 +33,17 @@ model — so they run offline and deterministically.
 ```bash
 cd evals
 pip install -e .
-pytest                      # whole suite
-pytest test_slop_parity.py  # just the slop port check (no EP install needed)
+pytest                          # whole suite (judges run if a Fireworks key is set)
+pytest test_slop_parity.py      # just the slop port check (no EP install needed)
+pytest test_styling.py::test_styled_slop   # offline eval only (what CI runs)
 ```
+
+The LLM judges read a Fireworks key from `FIREWORKS_API_KEY`, or the app's key
+file at `~/Library/Application Support/Screamer/fireworks.key`. Override the
+judge model with `FIREWORKS_JUDGE_MODEL`. CI runs only the offline slop eval; the
+judges call Fireworks (key + network + cost), so they run locally. Note that
+judging a real export sends that dictation text to Fireworks — the same provider
+the styling layer already uses; the committed sample is synthetic.
 
 ## Point it at your real data
 

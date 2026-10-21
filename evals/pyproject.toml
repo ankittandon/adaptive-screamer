@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "eval-protocol>=0.3",
     "pytest>=8",
+    "requests>=2.31",
     # Pin to the mcp 1.x line. mcp 2.x (2.0.0+) is a real, breaking major of the
     # MCP SDK (it splits types into `mcp-types`, switches httpx -> `httpx2`, and
     # moves `streamablehttp_client` out of `mcp.client.streamable_http`). But

@@ -44,5 +44,7 @@ jobs:
       - name: Slop parity (fast gate — must match the Rust detector)
         run: pytest -q test_slop_parity.py
 
-      - name: Run the Eval Protocol suite on the sample dataset
-        run: pytest -q test_styling.py
+      - name: Run the offline slop eval on the sample dataset
+        # Only the rules-based slop eval runs in CI. The intent/quality judges
+        # call Fireworks (need a key + network), so they run locally, not here.
+        run: pytest -q "test_styling.py::test_styled_slop"
