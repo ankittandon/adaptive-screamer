@@ -1510,8 +1510,12 @@ dependencies = [
 name = "screamer-whisper"
 version = "1.0.0"
 dependencies = [
+ "hound",
  "libc",
  "screamer-models",
+ "screamer-telemetry",
+ "serde_json",
+ "ureq",
  "whisper-rs",
 ]
 

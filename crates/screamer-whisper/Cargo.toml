@@ -9,7 +9,15 @@ publish = false
 name = "screamer_whisper"
 path = "src/lib.rs"
 
+[[bin]]
+name = "bench-asr"
+path = "src/bin/bench_asr.rs"
+
 [dependencies]
 libc = "0.2"
 screamer-models = { path = "../screamer-models" }
 whisper-rs = { version = "0.14", features = ["metal"] }
+screamer-telemetry = { path = "../screamer-telemetry" }
+hound = "3"
+ureq = { version = "2", features = ["json", "tls"] }
+serde_json = "1"
