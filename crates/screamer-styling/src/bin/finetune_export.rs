@@ -19,18 +19,20 @@
 //! chosen/rejected source.
 
 use std::collections::HashSet;
+use std::fs;
 use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use screamer_styling::SYSTEM_PROMPT;
-use screamer_telemetry::export_rows;
+use screamer_telemetry::{export_rows, write_export_jsonl, ExportRow};
 
 const DEFAULT_MAX_EDIT_RATIO: f32 = 0.8;
 
 fn usage() {
     eprintln!(
-        "usage: finetune-export <telemetry-dir> [--no-system-prompt] [--max-edit-ratio F] > sft.jsonl"
+        "usage: finetune-export <telemetry-dir> [--no-system-prompt] [--max-edit-ratio F] \
+         [--holdout N] [--eval-out FILE] > train.jsonl"
     );
 }
 
@@ -38,6 +40,8 @@ fn main() -> ExitCode {
     let mut dir: Option<PathBuf> = None;
     let mut system = true;
     let mut max_edit_ratio = DEFAULT_MAX_EDIT_RATIO;
+    let mut holdout = 0usize;
+    let mut eval_out: Option<PathBuf> = None;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -55,6 +59,26 @@ fn main() -> ExitCode {
                         return ExitCode::from(2);
                     }
                 }
+            }
+            "--holdout" => {
+                let Some(v) = args.next() else {
+                    eprintln!("--holdout needs a value");
+                    return ExitCode::from(2);
+                };
+                match v.parse::<usize>() {
+                    Ok(n) => holdout = n,
+                    _ => {
+                        eprintln!("--holdout must be a non-negative integer");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            "--eval-out" => {
+                let Some(v) = args.next() else {
+                    eprintln!("--eval-out needs a path");
+                    return ExitCode::from(2);
+                };
+                eval_out = Some(PathBuf::from(v));
             }
             "-h" | "--help" => {
                 usage();
@@ -81,11 +105,10 @@ fn main() -> ExitCode {
         }
     };
 
-    let out = io::stdout();
-    let mut out = BufWriter::new(out.lock());
+    // Filter + dedupe to clean (raw, settled) examples, preserving logged order.
     let mut seen: HashSet<(String, String)> = HashSet::new();
-    let (mut written, mut skipped) = (0usize, 0usize);
-
+    let mut skipped = 0usize;
+    let mut clean: Vec<&ExportRow> = Vec::new();
     for row in &rows {
         let raw = row.raw_text.trim();
         let settled = row.settled_text.as_deref().unwrap_or("").trim();
@@ -101,7 +124,37 @@ fn main() -> ExitCode {
             skipped += 1;
             continue;
         }
+        clean.push(row);
+    }
 
+    // Hold out the last N clean rows for the before/after eval; train on the rest.
+    let holdout = holdout.min(clean.len());
+    let split = clean.len() - holdout;
+    let (train, eval) = clean.split_at(split);
+
+    // Write the held-out rows as ExportRow JSONL (the eval suite reads this).
+    if let Some(path) = &eval_out {
+        let eval_rows: Vec<ExportRow> = eval.iter().map(|r| (*r).clone()).collect();
+        let res = fs::File::create(path).and_then(|f| {
+            let mut w = BufWriter::new(f);
+            write_export_jsonl(&eval_rows, &mut w)?;
+            w.flush()
+        });
+        if let Err(e) = res {
+            eprintln!("could not write eval set {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+    } else if holdout > 0 {
+        eprintln!("note: --holdout {holdout} set without --eval-out; held-out rows are excluded from train but not written.");
+    }
+
+    // Write the training SFT JSONL to stdout.
+    let out = io::stdout();
+    let mut out = BufWriter::new(out.lock());
+    let mut written = 0usize;
+    for row in train {
+        let raw = row.raw_text.trim();
+        let settled = row.settled_text.as_deref().unwrap_or("").trim();
         let mut messages = Vec::new();
         if system {
             messages.push(serde_json::json!({"role": "system", "content": SYSTEM_PROMPT}));
@@ -131,11 +184,12 @@ fn main() -> ExitCode {
     }
 
     eprintln!(
-        "exported {written} example(s) ({skipped} skipped, system prompt: {})",
+        "train: {written} example(s) | held out: {} | skipped: {skipped} | system prompt: {}",
+        eval.len(),
         if system { "included" } else { "omitted" }
     );
     if written < 3 {
-        eprintln!("warning: Fireworks SFT needs at least 3 examples; this dataset has {written}.");
+        eprintln!("warning: Fireworks SFT needs at least 3 examples; train has {written}.");
     }
 
     ExitCode::SUCCESS
