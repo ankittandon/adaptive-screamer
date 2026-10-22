@@ -1,7 +1,7 @@
 //! Benchmark on-device transcription against a cloud Whisper API over the
 //! dictation clips already in telemetry — the "local vs cloud" tradeoff.
 //!
-//!     bench-asr <telemetry-dir> [--model base] [--model-path FILE] [--limit N]
+//!     bench-asr <telemetry-dir> [--model base] [--model-path FILE] [--limit N] [--labeled-only]
 //!
 //! For each clip it runs the local Whisper (profiled) and, when an Azure Whisper
 //! deployment is configured, the cloud one, then reports latency (p50/p95),
@@ -30,6 +30,7 @@ struct Args {
     model: String,
     model_path: Option<PathBuf>,
     limit: Option<usize>,
+    labeled_only: bool,
 }
 
 fn parse_args() -> Result<Args, ExitCode> {
@@ -37,9 +38,11 @@ fn parse_args() -> Result<Args, ExitCode> {
     let mut model = "base".to_string();
     let mut model_path = None;
     let mut limit = None;
+    let mut labeled_only = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
+            "--labeled-only" => labeled_only = true,
             "--model" => model = args.next().ok_or_else(|| usage())?,
             "--model-path" => model_path = Some(PathBuf::from(args.next().ok_or_else(|| usage())?)),
             "--limit" => {
@@ -58,15 +61,15 @@ fn parse_args() -> Result<Args, ExitCode> {
         }
     }
     let Some(dir) = dir else { return Err(usage()) };
-    Ok(Args { dir, model, model_path, limit })
+    Ok(Args { dir, model, model_path, limit, labeled_only })
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: bench-asr <telemetry-dir> [--model base] [--model-path FILE] [--limit N]");
+    eprintln!("usage: bench-asr <telemetry-dir> [--model base] [--model-path FILE] [--limit N] [--labeled-only]");
     ExitCode::from(2)
 }
 fn usage_ok() -> ExitCode {
-    eprintln!("usage: bench-asr <telemetry-dir> [--model base] [--model-path FILE] [--limit N]");
+    eprintln!("usage: bench-asr <telemetry-dir> [--model base] [--model-path FILE] [--limit N] [--labeled-only]");
     ExitCode::SUCCESS
 }
 
@@ -146,17 +149,39 @@ fn cloud_transcribe(agent: &ureq::Agent, cfg: &AzureCfg, wav: &[u8]) -> Result<(
     );
     let boundary = "----screamerbench0xADAPTIVE";
     let body = multipart(boundary, wav, "clip.wav", &[("response_format", "json"), ("language", "en")]);
-    let t0 = Instant::now();
-    let resp = agent
-        .post(&url)
-        .set("api-key", &cfg.key)
-        .set("Content-Type", &format!("multipart/form-data; boundary={boundary}"))
-        .send_bytes(&body)
-        .map_err(|e| e.to_string())?;
-    let latency = t0.elapsed();
-    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-    let text = v["text"].as_str().unwrap_or("").to_string();
-    Ok((text, latency))
+    let ct = format!("multipart/form-data; boundary={boundary}");
+    // Fresh Azure Whisper deployments have a low requests-per-minute quota, so
+    // retry on 429, honoring Retry-After. The reported latency is the
+    // successful call's own round trip, not the waiting.
+    let mut backoff = Duration::from_secs(5);
+    for attempt in 1..=6u32 {
+        let t0 = Instant::now();
+        match agent.post(&url).set("api-key", &cfg.key).set("Content-Type", &ct).send_bytes(&body) {
+            Ok(resp) => {
+                let latency = t0.elapsed();
+                let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+                return Ok((v["text"].as_str().unwrap_or("").to_string(), latency));
+            }
+            Err(ureq::Error::Status(429, resp)) => {
+                if attempt == 6 {
+                    return Err("rate limited (429) after 6 attempts".to_string());
+                }
+                let wait = resp
+                    .header("retry-after")
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .map(Duration::from_secs)
+                    .unwrap_or(backoff);
+                std::thread::sleep(wait);
+                backoff = (backoff * 2).min(Duration::from_secs(30));
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let detail = resp.into_string().unwrap_or_default().chars().take(150).collect::<String>();
+                return Err(format!("status {code}: {detail}"));
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Err("rate limited (429)".to_string())
 }
 
 struct Row {
@@ -216,7 +241,7 @@ fn main() -> ExitCode {
         cloud.as_ref().map(|c| format!("Azure {} @ {}", c.deployment, c.endpoint)).unwrap_or_else(|| "off (no AZURE_OPENAI_ENDPOINT/key)".into())
     );
 
-    let rows = match export_rows(&args.dir, false) {
+    let rows = match export_rows(&args.dir, args.labeled_only) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("could not read telemetry {}: {e}", args.dir.display());
@@ -325,6 +350,7 @@ fn report(rows: &[Row]) {
             wer_cloud.map(|w| format!("{:.1}%", w * 100.0)).unwrap_or_else(|| "-".into()),
             format!("${:.2}", (cloud_cost / n as f64) * 1000.0),
         );
+        println!("(cloud latency/WER from {}/{} clips; the rest were rate-limited)", cloud.len(), n);
     } else {
         println!("cloud      (not run — set AZURE_OPENAI_ENDPOINT + key to enable)");
     }
