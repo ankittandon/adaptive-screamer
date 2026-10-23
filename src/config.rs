@@ -218,6 +218,11 @@ pub const MODELS: &[ModelInfo] = &[
         label: "Small",
         size: "466 MB",
     },
+    ModelInfo {
+        id: "accessibility",
+        label: "Accessibility (dysarthric, fine-tuned)",
+        size: "142 MB",
+    },
 ];
 
 pub struct HotkeyInfo {

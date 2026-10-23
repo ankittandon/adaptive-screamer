@@ -29,20 +29,19 @@ import modal
 BASE = "openai/whisper-base.en"
 
 app = modal.App("whisper-torgo")
-image = modal.Image.debian_slim(python_version="3.11").pip_install(
+image = modal.Image.debian_slim(python_version="3.11").apt_install("git").pip_install(
     "torch",
-    "transformers>=4.44",
-    "datasets>=2.20",
+    "transformers>=4.44,<5",   # pin to the 4.x Seq2SeqTrainer API
+    "datasets>=2.20,<4",
     "jiwer",
     "soundfile",
     "librosa",
-    "accelerate>=0.33",
-    "numpy<2",
+    "accelerate>=0.33,<2",
 )
 vol = modal.Volume.from_name("torgo-data", create_if_missing=True)
 
 
-@app.function(image=image, gpu="A10G", volumes={"/data": vol}, timeout=60 * 60 * 3)
+@app.function(image=image, gpu="T4", volumes={"/data": vol}, timeout=60 * 60 * 3)
 def train(epochs: int = 8, lr: float = 1e-5, batch: int = 16):
     import json
     import re
@@ -161,6 +160,39 @@ def train(epochs: int = 8, lr: float = 1e-5, batch: int = 16):
     print(f"\n=== RESULT ===\nbase {base_wer:.1f}% -> tuned {tuned_wer:.1f}% "
           f"(delta {base_wer - tuned_wer:+.1f} pts) | model saved to volume /whisper-base-torgo")
     return {"base_wer": base_wer, "tuned_wer": tuned_wer}
+
+
+@app.function(image=image, volumes={"/data": vol}, timeout=60 * 30)
+def convert_ggml():
+    """Convert the fine-tuned HF model to whisper.cpp GGML on the volume.
+
+    Re-saves as pytorch_model.bin (the converter wants torch, not safetensors),
+    fixes the null max_length, clones whisper.cpp + openai/whisper for the
+    conversion assets, and writes /data/ggml-model.bin.
+    """
+    import json
+    import os
+    import subprocess
+
+    from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+    src = "/data/whisper-base-torgo"
+    hf = "/tmp/hf"
+    os.makedirs(hf, exist_ok=True)
+    WhisperForConditionalGeneration.from_pretrained(src).save_pretrained(hf, safe_serialization=False)
+    WhisperProcessor.from_pretrained(src).save_pretrained(hf)
+    cfg = json.load(open(f"{hf}/config.json"))
+    cfg["max_length"] = 448
+    json.dump(cfg, open(f"{hf}/config.json", "w"))
+
+    subprocess.run(["git", "clone", "--depth", "1", "https://github.com/ggml-org/whisper.cpp", "/wcpp"], check=True)
+    subprocess.run(["git", "clone", "--depth", "1", "https://github.com/openai/whisper", "/owhisper"], check=True)
+    subprocess.run(["python", "/wcpp/models/convert-h5-to-ggml.py", hf, "/owhisper", "/data"], check=True)
+
+    vol.commit()
+    size = os.path.getsize("/data/ggml-model.bin")
+    print(f"wrote /data/ggml-model.bin ({size/1e6:.0f} MB)")
+    return size
 
 
 @app.local_entrypoint()
