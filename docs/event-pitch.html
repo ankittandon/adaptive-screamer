@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive Screamer — Pitch</title>
+<style>
+  :root{
+    --bg:#0c0e14; --panel:#141824; --ink:#eef1f7; --muted:#9aa4b8; --line:#232a3a;
+    --accent:#ff7a3d; --good:#3ddc97; --cool:#5aa9ff; --warn:#ffd166;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  .stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  .slide{display:none;width:min(1120px,92vw);height:min(630px,86vh);
+    background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:56px 64px;flex-direction:column;justify-content:center;position:relative}
+  .slide.active{display:flex;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .kicker{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:14px}
+  h1{font-size:46px;line-height:1.08;font-weight:700;letter-spacing:-.02em}
+  h2{font-size:34px;line-height:1.12;font-weight:700;letter-spacing:-.01em;margin-bottom:22px}
+  p{font-size:19px;line-height:1.6;color:var(--muted);max-width:60ch}
+  p.lead{font-size:22px;color:var(--ink)}
+  .big{font-size:20px;color:var(--ink);line-height:1.55}
+  b,strong{color:var(--ink);font-weight:650}
+  .accent{color:var(--accent)} .good{color:var(--good)} .cool{color:var(--cool)}
+  .row{display:flex;gap:18px;margin-top:26px;flex-wrap:wrap}
+  .tile{flex:1;min-width:210px;background:#0f1320;border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .tile .lab{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .tile .num{font-size:40px;font-weight:750;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+  .tile .sub{font-size:14px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:17px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.06em}
+  td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+  ul{margin-top:14px;padding-left:22px} li{font-size:19px;line-height:1.7;color:var(--muted);margin-bottom:6px}
+  li b{color:var(--ink)}
+  .arrow{color:var(--accent);font-weight:700}
+  .foot{position:fixed;bottom:16px;left:0;right:0;display:flex;justify-content:center;gap:10px;align-items:center}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--line);cursor:pointer}
+  .dot.on{background:var(--accent);width:22px;border-radius:4px}
+  .count{position:fixed;bottom:14px;right:22px;color:var(--muted);font-size:13px;font-family:var(--mono)}
+  .pill{display:inline-block;font-size:13px;color:var(--accent);border:1px solid var(--accent);
+    border-radius:999px;padding:3px 11px;margin-bottom:16px;font-weight:600}
+  .note{font-size:14px;color:var(--muted);margin-top:18px;font-style:italic}
+  .steps{counter-reset:s}
+  .steps li{list-style:none;position:relative;padding-left:40px;margin-bottom:12px}
+  .steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:2px;
+    width:26px;height:26px;border-radius:50%;background:var(--accent);color:#1a1004;
+    font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <section class="slide active">
+    <div class="kicker">Fireworks · Microsoft · NVIDIA — Nov 2</div>
+    <h1>Adaptive Screamer</h1>
+    <p class="lead" style="margin-top:18px">A free, private, <span class="accent">on-device</span> dictation app — made <b>faster</b>, <b>smarter</b>, and usable by the people it used to fail.</p>
+    <p style="margin-top:16px">Open models + the Fireworks stack, measured against baselines on three axes. The difference from a notebook: <b>it's a shipping app</b>, so every result runs in production.</p>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">The task, in one line</div>
+    <h2>Three measured bets on one product</h2>
+    <div class="row">
+      <div class="tile"><div class="lab">A · Efficiency</div><div class="num cool">2.3×</div><div class="sub">on-device vs cloud, at $0</div></div>
+      <div class="tile"><div class="lab">B · Quality</div><div class="num">eval-driven</div><div class="sub">styling on Eval Protocol</div></div>
+      <div class="tile"><div class="lab">C · Reach</div><div class="num good">WER ÷2</div><div class="sub">dysarthric speech, in-app</div></div>
+    </div>
+    <p class="note">Each one: a real eval, a tuned dimension vs a baseline, a measured tradeoff — deployed in the app.</p>
+  </section>
+
+  <section class="slide">
+    <span class="pill">Pillar A</span>
+    <h2>On-device vs cloud — latency, cost, privacy</h2>
+    <p>1,078 real dictation clips through on-device Whisper and Azure cloud Whisper.</p>
+    <table>
+      <tr><th></th><th class="r">p50 latency</th><th class="r">cost / 1k</th><th class="r">WER</th></tr>
+      <tr><td><b>On-device</b> (base.en)</td><td class="r good">349 ms</td><td class="r good">$0.00</td><td class="r">42.7%</td></tr>
+      <tr><td>Azure Whisper (cloud)</td><td class="r">805 ms</td><td class="r">$2.27</td><td class="r">~match</td></tr>
+    </table>
+    <p class="big" style="margin-top:22px"><span class="accent">~2.3× faster, free, and fully private</span> — at competitive accuracy. Ships on-device today.</p>
+  </section>
+
+  <section class="slide">
+    <span class="pill">Pillar B</span>
+    <h2>Styling personalization — Fireworks-native</h2>
+    <ul>
+      <li>Eval built on <b>Eval Protocol</b> (Fireworks' own tool): slop + intent + quality judges over real dictation traces, scores pushed to Braintrust.</li>
+      <li>Production baseline: slop <b>4.9</b>/1k · intent <b>0.997</b> · quality <b>0.868</b> — prompt-tuning vs raw is the measured win.</li>
+      <li>Full SFT pipeline on Fireworks (dataset + fine-tune jobs on Qwen3 / Muse Glimmer / deepseek-flash).</li>
+    </ul>
+    <p class="note">Honest: tuned-<i>inference</i> hit real Fireworks deployment friction — which we documented as feedback, reproducing a prior report point-for-point. Depth, not a dead end.</p>
+  </section>
+
+  <section class="slide">
+    <span class="pill">Pillar C — the headline</span>
+    <h2>Accessibility: Whisper that hears dysarthric speech</h2>
+    <div class="row">
+      <div class="tile"><div class="lab">Base Whisper</div><div class="num">42.7%</div><div class="sub">WER, held-out dysarthric</div></div>
+      <div class="tile"><div class="lab">Fine-tuned</div><div class="num good">21.9%</div><div class="sub">error roughly halved</div></div>
+      <div class="tile"><div class="lab">Runs</div><div class="num accent">in-app</div><div class="sub">GGML, on-device</div></div>
+    </div>
+    <p class="big" style="margin-top:22px">Public <b>TORGO</b> corpus · severity-stratified base <b>98% / 60% / 25%</b> · fine-tuned on HuggingFace + Modal · converted to GGML and <b>bundled into Screamer.app</b> as a selectable model.</p>
+    <p class="note">A free, private, local dictation tool made usable by people with speech disabilities.</p>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Judging rubric → evidence</div>
+    <h2>Every box, checked</h2>
+    <table>
+      <tr><th>Rubric</th><th>Evidence</th></tr>
+      <tr><td>Build an eval</td><td>Eval Protocol (B) · jiwer/TORGO (C) · 1,078-clip benchmark (A)</td></tr>
+      <tr><td>Tune vs a baseline</td><td><b>Whisper WER 42.7% → 21.9%</b> (C) · anti-slop prompt-tuning (B)</td></tr>
+      <tr><td>Measure a tradeoff</td><td>accuracy vs latency vs cost (A) · quality vs cost (B)</td></tr>
+      <tr><td>Business value</td><td>$0 vs subscription · privacy · <b>accessibility</b> · personalization</td></tr>
+      <tr><td>Deploy in production</td><td><b>A real shipping macOS app</b> — all three run in it</td></tr>
+      <tr><td>Own frontier, open models</td><td>fine-tuned open Whisper (C) + open styling model (B)</td></tr>
+    </table>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">5-minute demo flow</div>
+    <h2>What we'll show</h2>
+    <ol class="steps">
+      <li>Dictate a line live — instant, on-device.</li>
+      <li><b>A:</b> the latency/cost table — 2.3× faster, $0, private.</li>
+      <li><b>B:</b> messy speech → cleaned text; the Eval Protocol dashboard.</li>
+      <li><b>C:</b> a dysarthric clip base Whisper gets wrong → switch to the Accessibility model → it's right. Show WER 42.7% → 21.9%.</li>
+      <li>Close: open models, our own frontier — and it ships.</li>
+    </ol>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Why it wins</div>
+    <h2>Measured, deployed, and it matters</h2>
+    <p class="big">Three baseline-beating results — <span class="cool">2.3× cheaper/faster</span>, <span class="accent">eval-driven styling</span>, <span class="good">dysarthric WER halved</span> — all running in a <b>real product</b>, on <b>open models</b>, on the <b>Fireworks + NVIDIA</b> stack.</p>
+    <p style="margin-top:20px">Bonus: we stress-tested the platform hard enough to file precise, reproduced feedback to the Fireworks team.</p>
+  </section>
+
+</div>
+
+<div class="foot" id="dots"></div>
+<div class="count" id="count"></div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  const dots=document.getElementById('dots');
+  const count=document.getElementById('count');
+  let i=0;
+  slides.forEach((_,n)=>{const d=document.createElement('div');d.className='dot';d.onclick=()=>go(n);dots.appendChild(d);});
+  function go(n){i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    [...dots.children].forEach((d,k)=>d.classList.toggle('on',k===i));
+    count.textContent=(i+1)+' / '+slides.length;}
+  function next(){go(i+1)} function prev(){go(i-1)}
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();next()}
+    if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prev()}
+    if(e.key==='Home')go(0); if(e.key==='End')go(slides.length-1);});
+  document.querySelector('.stage').addEventListener('click',e=>{if(e.target.closest('.dot'))return;next()});
+  go(0);
+</script>
+</body>
+</html>
