@@ -29,6 +29,7 @@ REQUIRED_MODELS=(
 OPTIONAL_MODELS=(
     "ggml-tiny.en.bin"
     "ggml-small.en.bin"
+    "ggml-accessibility.en.bin"
 )
 
 IS_DEVELOPER_ID=0
