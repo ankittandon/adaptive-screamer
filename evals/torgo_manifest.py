@@ -34,7 +34,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("torgo")
     ap.add_argument("out")
-    ap.add_argument("--eval", default="F01", help="comma-separated held-out speakers")
+    ap.add_argument("--split-mode", choices=["speaker", "utterance"], default="speaker")
+    ap.add_argument("--eval", default="F01", help="speaker-mode: comma-separated held-out speakers")
+    ap.add_argument("--eval-frac", type=float, default=0.15, help="utterance-mode: eval fraction per speaker")
     args = ap.parse_args()
     eval_spk = {s.strip() for s in args.eval.split(",") if s.strip()}
 
@@ -61,8 +63,19 @@ def main():
             "audio": os.path.relpath(wav, args.torgo),
             "text": ref,
             "speaker": spk,
-            "split": "eval" if spk in eval_spk else "train",
         })
+
+    # Assign splits.
+    if args.split_mode == "speaker":
+        for r in rows:
+            r["split"] = "eval" if r["speaker"] in eval_spk else "train"
+    else:  # utterance: hold out a deterministic fraction per speaker
+        for spk in {r["speaker"] for r in rows}:
+            srt = sorted((r for r in rows if r["speaker"] == spk), key=lambda r: r["audio"])
+            n_eval = max(1, round(len(srt) * args.eval_frac))
+            step = max(1, len(srt) // n_eval)
+            for i, r in enumerate(srt):
+                r["split"] = "eval" if i % step == 0 else "train"
 
     rows.sort(key=lambda r: (r["split"], r["speaker"], r["audio"]))
     with open(args.out, "w") as f:
