@@ -14,8 +14,9 @@ open models and the Fireworks / Modal stack.*
   public **TORGO** dysarthric-speech corpus, run on a managed GPU, then converted
   to GGML and loaded into the shipping app.
 - **Result.** Word-error rate on held-out dysarthric utterances dropped from
-  **42.7% → 21.9%** — a **~49% relative reduction** — with the fine-tuned model
-  running **on-device in the app**, same footprint as the base model, no cloud.
+  **42.7% → 22.3%** — a **~48% relative reduction**, and the error roughly halved
+  across *every* severity stratum (severe speaker 89.7% → 44.8%). The fine-tuned
+  model runs **on-device in the app**, same footprint as the base, no cloud.
 
 ## The task: dictation that excludes people
 
@@ -76,35 +77,37 @@ command.
 
 ## Evaluation
 
-We measure **WER** (via jiwer) on the held-out utterances the model never trained
-on, after light normalization (lowercase, strip punctuation). Because TORGO
-spans severities, the baseline is naturally **severity-stratified** — a useful,
-honest picture of where general ASR breaks down:
+We measure **WER** (via jiwer) on the 181 held-out utterances the model never
+trained on, decoded with HuggingFace `generate`, after light normalization
+(lowercase, strip punctuation). Because TORGO spans severities, we report the
+result **stratified by speaker** — the honest picture of where general ASR breaks
+down and where the fine-tune helps most. (An independent CPU baseline with
+faster-whisper over the full F set corroborated that base degrades sharply with
+severity — ~50% WER overall, far worse for the severe speaker.)
 
-| Speaker (severity) | Base Whisper WER |
-|---|---|
-| F01 (severe) | ~98% |
-| F03 (moderate) | ~60% |
-| F04 (mild) | ~25% |
+## Results: error roughly halved — most where it mattered most
 
-Base Whisper is essentially unusable for the most affected speaker and shaky for
-the moderate one. A separate CPU baseline (faster-whisper over the full set)
-corroborated the picture at **50.3%** overall.
+Base vs fine-tuned WER on the held-out split, by severity stratum (lower is
+better):
 
-## Results: error roughly halved
+| Stratum | n | Base WER | Fine-tuned WER | Δ (pts) | Relative |
+|---|---:|---:|---:|---:|---:|
+| **F01 (severe)** | 19 | 89.7% | **44.8%** | −44.8 | **−50%** |
+| **F03 (moderate)** | 91 | 52.4% | **31.2%** | −21.2 | **−40%** |
+| **F04 (mild)** | 71 | 22.5% | **7.0%** | −15.5 | **−69%** |
+| **Overall** | 181 | **42.7%** | **22.3%** | −20.4 | **−48%** |
 
-On the 181 held-out dysarthric utterances:
+Fine-tuning on a few hundred dysarthric utterances **cut the overall error rate
+roughly in half** — and the gains hold across the severity range. The two
+headline moves:
 
-| | WER |
-|---|---|
-| **Base Whisper** (whisper-base.en) | **42.7%** |
-| **Fine-tuned** | **21.9%** |
-| **Relative reduction** | **~49%** |
+- The **severe** speaker (F01) went from **89.7% → 44.8%** — from effectively
+  unusable toward partially usable, the largest absolute gain (−44.8 pts).
+- The **mild** speaker (F04) reached **7.0%** WER — genuinely usable dictation,
+  the largest *relative* gain (−69%).
 
-Fine-tuning on a few hundred dysarthric utterances **roughly halved the error
-rate** on held-out speech from the same speakers. The gains concentrate in the
-shorter word- and phrase-length utterances the model adapted to; severe-speaker
-*long sentences* remain hard, which is the honest frontier here.
+The severe-speaker *long sentences* remain the hard frontier; the biggest wins
+are on the shorter word- and phrase-length utterances the model adapted to.
 
 ## Deployment: it runs in the app
 

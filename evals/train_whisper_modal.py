@@ -162,6 +162,85 @@ def train(epochs: int = 8, lr: float = 1e-5, batch: int = 16):
     return {"base_wer": base_wer, "tuned_wer": tuned_wer}
 
 
+@app.function(image=image, gpu="T4", volumes={"/data": vol}, timeout=60 * 30)
+def eval_strata(split: str = "eval"):
+    """Base vs fine-tuned WER on the held-out split, broken down by speaker
+    (severity stratum). Same normalization as training's compute_metrics, so the
+    'ALL' row reproduces the headline base->tuned number.
+    """
+    import json
+    import re
+
+    import jiwer
+    import torch
+    from datasets import Audio, Dataset
+    from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+    rows = [json.loads(l) for l in open("/data/manifest.jsonl")]
+    rows = [r for r in rows if r["split"] == split]
+    root = "/data/torgo"
+    proc = WhisperProcessor.from_pretrained(BASE)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    ds = Dataset.from_dict(
+        {
+            "audio": [f"{root}/{r['audio']}" for r in rows],
+            "text": [r["text"] for r in rows],
+            "speaker": [r["speaker"] for r in rows],
+        }
+    ).cast_column("audio", Audio(sampling_rate=16000))
+
+    _norm = lambda s: re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", s.lower())).strip()
+
+    def transcribe_all(model_path):
+        model = WhisperForConditionalGeneration.from_pretrained(model_path).to(device).eval()
+        hyps = []
+        for i in range(0, len(ds), 16):
+            chunk = ds[i : i + 16]
+            feats = proc.feature_extractor(
+                [a["array"] for a in chunk["audio"]], sampling_rate=16000, return_tensors="pt"
+            ).input_features.to(device)
+            with torch.no_grad():
+                ids = model.generate(feats, max_new_tokens=225)
+            hyps.extend(proc.tokenizer.batch_decode(ids, skip_special_tokens=True))
+        return hyps
+
+    def wer_by_speaker(hyps):
+        buckets, allr, allh = {}, [], []
+        for r, h, spk in zip(ds["text"], hyps, ds["speaker"]):
+            ref, hyp = _norm(r), _norm(h)
+            if not ref:
+                continue
+            buckets.setdefault(spk, ([], []))
+            buckets[spk][0].append(ref)
+            buckets[spk][1].append(hyp)
+            allr.append(ref)
+            allh.append(hyp)
+        out = {
+            spk: (jiwer.wer(rs, hs) * 100, len(rs)) for spk, (rs, hs) in sorted(buckets.items())
+        }
+        out["ALL"] = (jiwer.wer(allr, allh) * 100, len(allr))
+        return out
+
+    base = wer_by_speaker(transcribe_all(BASE))
+    tuned = wer_by_speaker(transcribe_all("/data/whisper-base-torgo"))
+
+    sev = {"F01": "severe", "F03": "moderate", "F04": "mild"}
+    print(f"\n=== base vs fine-tuned WER by stratum ({split} split) ===")
+    print(f"{'stratum':<20}{'n':>5}{'base':>9}{'tuned':>9}{'Δ pts':>9}{'rel':>8}")
+    result = {}
+    for k in list(sev) + ["ALL"]:
+        if k not in base:
+            continue
+        label = f"{k} ({sev[k]})" if k in sev else "Overall"
+        bw, n = base[k]
+        tw, _ = tuned[k]
+        rel = (bw - tw) / bw * 100 if bw else 0.0
+        print(f"{label:<20}{n:>5}{bw:>8.1f}%{tw:>8.1f}%{bw - tw:>+8.1f}{rel:>7.0f}%")
+        result[k] = {"n": n, "base": bw, "tuned": tw}
+    return result
+
+
 @app.function(image=image, volumes={"/data": vol}, timeout=60 * 30)
 def convert_ggml():
     """Convert the fine-tuned HF model to whisper.cpp GGML on the volume.

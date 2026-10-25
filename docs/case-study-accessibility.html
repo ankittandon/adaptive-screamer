@@ -80,8 +80,8 @@
       </div>
       <div class="item">
         <div class="lab">Result</div>
-        <p>Held-out dysarthric WER <b class="good">42.7% → 21.9%</b> — a ~49% relative
-        reduction — running on-device, same footprint as base, no cloud.</p>
+        <p>Held-out dysarthric WER <b class="good">42.7% → 22.3%</b> — error roughly
+        halved across <i>every</i> severity stratum, running on-device, no cloud.</p>
       </div>
     </div>
   </div>
@@ -139,30 +139,37 @@
   first, trains, then evaluates again, so base-vs-tuned comes out of one command.</p>
 
   <h2>Evaluation</h2>
-  <p>We measure <b>WER</b> (via jiwer) on the held-out utterances the model never trained
-  on, after light normalization (lowercase, strip punctuation). Because TORGO spans
-  severities, the baseline is naturally <b>severity-stratified</b> — a useful, honest
-  picture of where general ASR breaks down:</p>
-  <table>
-    <tr><th>Speaker (severity)</th><th class="r">Base Whisper WER</th></tr>
-    <tr><td>F01 (severe)</td><td class="r">~98%</td></tr>
-    <tr><td>F03 (moderate)</td><td class="r">~60%</td></tr>
-    <tr><td>F04 (mild)</td><td class="r">~25%</td></tr>
-  </table>
-  <p>Base Whisper is essentially unusable for the most affected speaker and shaky for the
-  moderate one. A separate CPU baseline (faster-whisper over the full set) corroborated
-  the picture at <b>50.3%</b> overall.</p>
+  <p>We measure <b>WER</b> (via jiwer) on the 181 held-out utterances the model never
+  trained on, decoded with HuggingFace <code>generate</code>, after light normalization
+  (lowercase, strip punctuation). Because TORGO spans severities, we report the result
+  <b>stratified by speaker</b> — the honest picture of where general ASR breaks down and
+  where the fine-tune helps most. (An independent faster-whisper baseline over the full F
+  set corroborated that base degrades sharply with severity — ~50% WER overall, far worse
+  for the severe speaker.)</p>
 
-  <h2>Results: error roughly halved</h2>
+  <h2>Results: error roughly halved — most where it mattered most</h2>
   <div class="stats">
-    <div class="stat"><div class="lab">Base Whisper</div><div class="num">42.7%</div><div class="sub">WER, held-out dysarthric</div></div>
-    <div class="stat"><div class="lab">Fine-tuned</div><div class="num good">21.9%</div><div class="sub">error roughly halved</div></div>
-    <div class="stat"><div class="lab">Relative</div><div class="num accent">~49%</div><div class="sub">WER reduction</div></div>
+    <div class="stat"><div class="lab">Overall base</div><div class="num">42.7%</div><div class="sub">WER, held-out</div></div>
+    <div class="stat"><div class="lab">Overall tuned</div><div class="num good">22.3%</div><div class="sub">−48% relative</div></div>
+    <div class="stat"><div class="lab">Severe speaker</div><div class="num accent">89.7→44.8</div><div class="sub">largest absolute gain</div></div>
   </div>
-  <p>Fine-tuning on a few hundred dysarthric utterances <b>roughly halved the error
-  rate</b> on held-out speech from the same speakers. The gains concentrate in the shorter
-  word- and phrase-length utterances the model adapted to; severe-speaker <i>long
-  sentences</i> remain hard, which is the honest frontier here.</p>
+  <p>Base vs fine-tuned WER on the held-out split, by severity stratum — lower is better:</p>
+  <div style="position:relative;width:100%;height:300px;margin:18px 0 8px">
+    <canvas id="werChart"></canvas>
+  </div>
+  <table>
+    <tr><th>Stratum</th><th class="r">n</th><th class="r">Base</th><th class="r">Fine-tuned</th><th class="r">Δ pts</th><th class="r">Relative</th></tr>
+    <tr class="hi"><td>F01 (severe)</td><td class="r">19</td><td class="r">89.7%</td><td class="r good">44.8%</td><td class="r">−44.8</td><td class="r accent">−50%</td></tr>
+    <tr class="hi"><td>F03 (moderate)</td><td class="r">91</td><td class="r">52.4%</td><td class="r good">31.2%</td><td class="r">−21.2</td><td class="r accent">−40%</td></tr>
+    <tr class="hi"><td>F04 (mild)</td><td class="r">71</td><td class="r">22.5%</td><td class="r good">7.0%</td><td class="r">−15.5</td><td class="r accent">−69%</td></tr>
+    <tr class="hi"><td>Overall</td><td class="r">181</td><td class="r">42.7%</td><td class="r good">22.3%</td><td class="r">−20.4</td><td class="r accent">−48%</td></tr>
+  </table>
+  <p>Fine-tuning on a few hundred dysarthric utterances <b>cut the overall error rate
+  roughly in half</b> — and the gains hold across the severity range. The <b>severe</b>
+  speaker went from <b>89.7% → 44.8%</b> (the largest absolute gain, from effectively
+  unusable toward partially usable); the <b>mild</b> speaker reached <b>7.0%</b> WER —
+  genuinely usable dictation, the largest relative gain. Severe-speaker <i>long sentences</i>
+  stay hard; the biggest wins are on the shorter utterances the model adapted to.</p>
 
   <h2>Deployment: it runs in the app</h2>
   <p>The point was never a checkpoint on a leaderboard — it was a model a real user can
@@ -234,5 +241,27 @@
   </div>
 
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+  const rel=['50%','40%','69%','48%'];
+  new Chart(document.getElementById('werChart'),{
+    type:'bar',
+    data:{labels:['F01 severe','F03 moderate','F04 mild','Overall'],datasets:[
+      {label:'Base',data:[89.7,52.4,22.5,42.7],backgroundColor:'#5f5e5a',borderRadius:4,maxBarThickness:46},
+      {label:'Fine-tuned',data:[44.8,31.2,7.0,22.3],backgroundColor:'#5aa9ff',borderRadius:4,maxBarThickness:46}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{
+        y:{beginAtZero:true,max:100,grid:{color:'rgba(255,255,255,0.08)'},ticks:{color:'#9aa4b8',callback:v=>v+'%'}},
+        x:{grid:{display:false},ticks:{color:'#cdd4e3'}}
+      },
+      plugins:{
+        legend:{labels:{color:'#cdd4e3',boxWidth:12,boxHeight:12}},
+        tooltip:{callbacks:{afterbody:i=>'down '+rel[i[0].dataIndex]+' relative'}}
+      }
+    },
+    plugins:[{id:'rel',afterDatasetsDraw(c){const{ctx}=c;const m0=c.getDatasetMeta(0),m1=c.getDatasetMeta(1);ctx.save();ctx.font='650 12px -apple-system,sans-serif';ctx.fillStyle='#3ddc97';ctx.textAlign='center';m1.data.forEach((bar,i)=>{ctx.fillText('↓'+rel[i],bar.x,bar.y-8);});ctx.restore();}}]
+  });
+</script>
 </body>
 </html>

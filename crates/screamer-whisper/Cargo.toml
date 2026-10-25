@@ -17,6 +17,10 @@ path = "src/bin/bench_asr.rs"
 name = "asr-try"
 path = "src/bin/asr_try.rs"
 
+[[bin]]
+name = "asr-eval"
+path = "src/bin/asr_eval.rs"
+
 [dependencies]
 libc = "0.2"
 screamer-models = { path = "../screamer-models" }
