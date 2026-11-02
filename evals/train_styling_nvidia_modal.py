@@ -40,13 +40,13 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
     "datasets>=2.20,<4",
     "accelerate>=0.33,<2",
     "sentencepiece",
-)
+).env({"PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"})
 vol = modal.Volume.from_name("styling-data", create_if_missing=True)
 ADAPTER = "/data/nvidia-styling-adapter"
 
 
-@app.function(image=image, gpu="A10G", volumes={"/data": vol}, timeout=60 * 60 * 3)
-def train(epochs: int = 3, lr: float = 2e-4, batch: int = 4):
+@app.function(image=image, gpu="A100", volumes={"/data": vol}, timeout=60 * 60 * 3)
+def train(epochs: int = 3, lr: float = 2e-4, batch: int = 2):
     import json
 
     import torch
@@ -87,6 +87,8 @@ def train(epochs: int = 3, lr: float = 2e-4, batch: int = 4):
         task_type="CAUSAL_LM", target_modules="all-linear",
     )
     model = get_peft_model(model, lora)
+    model.gradient_checkpointing_enable()
+    model.config.use_cache = False
     model.print_trainable_parameters()
 
     args = TrainingArguments(
