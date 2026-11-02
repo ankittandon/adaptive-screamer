@@ -87,15 +87,37 @@ refuses to promote a model that doesn't generalize.
 
 ## 3. Efficiency tradeoff (disclosed per rule 8)
 
-On 1,078 real dictation clips, on-device vs **Azure Whisper** (cloud):
+On-device vs two cloud ASR services — including **NVIDIA's own** hosted Parakeet
+(via NIM):
 
-| | p50 latency | cost / 1k | WER |
-|---|--:|--:|--:|
-| On-device (base.en) | **349 ms** | **$0.00** | competitive |
-| Azure Whisper (cloud) | 805 ms | $2.27 | ~match |
+| Option | p50 latency | cost / 1k | audio leaves device? | dysarthric WER |
+|---|--:|--:|:--:|--:|
+| **On-device Whisper (tuned)** | **349 ms** | **$0.00** | **no** | **22.3%** (tuned) |
+| Azure Whisper (cloud) | 805 ms | $2.27 | yes | ~match (general) |
+| NVIDIA Parakeet-TDT-0.6b (NIM) | 311 ms* | GPU / paid | yes | 60.3% (base) |
 
-≈ **2.3× faster, $0 marginal, fully private**, at comparable quality — the
-efficiency improvement retains useful task performance. ([`bench-asr`](crates/screamer-whisper/src/bin/bench_asr.rs).)
+\* NVIDIA latency measured on short TORGO clips over venue wifi (not the same
+1,078-clip set as the on-device/Azure rows), so treat it as *comparable*, not a
+precise head-to-head.
+
+**Warmup + network dependence (the hidden cloud cost).** The cloud options carry a
+**cold start** and are **at the mercy of the network**. NVIDIA NIM, measured from
+the venue: first (cold) request **~3.0 s**, then ~1.0 s, ~0.9 s. Steady-state
+latency swung with wifi quality — **p50 311 ms / p95 713 ms** on a good connection,
+but **p50 606 ms / p95 ≈ 19 s** on congested conference wifi. On-device has **no
+warmup and no network dependence**: a flat ~349 ms whether the network is empty or
+saturated. (This isn't a knock on NVIDIA's service — it's the nature of any cloud
+call; it's exactly the risk on-device removes.)
+
+**Read:** on good network NVIDIA's hosted ASR is fast (≈ on-device latency, faster
+than Azure), so *average* latency doesn't separate the cloud options from
+on-device. On-device wins the rest of the tradeoff — **$0 cost, audio never leaves
+the device, no cold start, works offline and consistently regardless of network,
+and far better quality on the task that matters** (base Parakeet 60.3% WER on
+dysarthric speech vs our tuned on-device model at 22.3%). The efficiency gain
+retains — in fact improves — useful task performance.
+([`bench-asr`](crates/screamer-whisper/src/bin/bench_asr.rs) for on-device/Azure;
+[`nvidia_asr_bench.py --latency`](evals/nvidia_asr_bench.py) for NVIDIA NIM.)
 
 ---
 

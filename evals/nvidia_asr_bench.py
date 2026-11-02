@@ -44,6 +44,8 @@ def main():
     ap.add_argument("--split", default="eval")
     ap.add_argument("--model", default="parakeet-tdt-0.6b-v2", choices=list(FUNCTION_IDS))
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--latency", type=int, default=0,
+                    help="measure per-request latency on this many clips (skips WER)")
     a = ap.parse_args()
 
     auth = riva.client.Auth(
@@ -54,6 +56,33 @@ def main():
 
     rows = [json.loads(l) for l in open(f"{a.torgo}/manifest.jsonl")]
     rows = [r for r in rows if r["split"] == a.split]
+
+    if a.latency:
+        import statistics as st
+        import time
+
+        WARMUP = 3
+        allt = []
+        for r in rows[: a.latency]:
+            wav = f"{a.torgo}/{r['audio']}"
+            cfg = riva.client.RecognitionConfig(
+                language_code="en-US", max_alternatives=1, enable_automatic_punctuation=False
+            )
+            riva.client.add_audio_file_specs_to_config(cfg, wav)
+            data = open(wav, "rb").read()
+            t = time.perf_counter()
+            asr.offline_recognize(data, cfg)
+            allt.append((time.perf_counter() - t) * 1000)
+        warm = allt[:WARMUP]
+        steady = sorted(allt[WARMUP:])
+        q = lambda p: steady[int(p * len(steady))]
+        print(f"NVIDIA NIM {a.model} latency:")
+        print(f"  warmup (first {len(warm)} cold requests): "
+              + ", ".join(f"{x:.0f}" for x in warm) + " ms")
+        print(f"  steady-state (n={len(steady)}): "
+              f"p50={q(0.5):.0f} ms  p95={q(0.95):.0f} ms  mean={st.mean(steady):.0f} ms  min={steady[0]:.0f} ms")
+        return
+
     if a.limit:
         rows = rows[: a.limit]
 
