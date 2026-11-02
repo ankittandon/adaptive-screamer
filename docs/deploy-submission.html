@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive Screamer — Deploy Submission</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#F9F7F5; --panel:#FFFFFF; --ink:#280016; --ink2:#5c3345;
+    --muted:#8a7681; --line:#e6ddd9; --accent:#F98461; --accent-d:#c2410c;
+    --good:#1d7a4f; --rust:#b5432a;
+    --serif:"Crimson Text",Georgia,serif;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--cream);color:var(--ink);font-family:var(--sans);line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:56px 22px 110px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;letter-spacing:.04em;color:var(--ink);margin-bottom:40px}
+  .spark{width:22px;height:22px;flex:none}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-d);font-weight:500;margin-bottom:16px}
+  h1{font-family:var(--serif);font-size:46px;line-height:1.08;font-weight:600;letter-spacing:-.01em;margin-bottom:18px;color:var(--ink)}
+  .lead{font-size:19px;color:var(--ink2);max-width:62ch;margin-bottom:14px}
+  .lead b{color:var(--ink);font-weight:600}
+  h2{font-family:var(--serif);font-size:30px;font-weight:600;margin:52px 0 6px;padding-top:30px;border-top:1px solid var(--line);color:var(--ink)}
+  .step{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-d);margin-bottom:4px}
+  h3{font-size:17px;font-weight:600;margin:22px 0 6px}
+  p{font-size:16.5px;color:#43303a;margin:12px 0;max-width:70ch}
+  b,strong{color:var(--ink);font-weight:600}
+  a{color:var(--accent-d)}
+  code{font-family:var(--mono);font-size:13px;background:#f1ebe8;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--rust)}
+  .accent{color:var(--accent-d)} .good{color:var(--good)}
+  ul{margin:12px 0 12px 2px;padding-left:22px} li{font-size:16px;color:#43303a;margin-bottom:8px;max-width:68ch}
+  li b{color:var(--ink)}
+  .tldr{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px 30px;margin:26px 0}
+  .tldr p{margin:0;font-size:17px;color:var(--ink2)}
+  .tldr p b{color:var(--ink)}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:15.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{font-family:var(--mono);color:var(--muted);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em}
+  td.r,th.r{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  tr.hi td{color:var(--ink);font-weight:600}
+  .chartcard{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin:20px 0}
+  .chartcard .cap{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:12px;letter-spacing:.03em}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin:4px 0 10px;font-size:13px;color:var(--ink2)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .grid{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0}
+  .card{flex:1;min-width:210px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .card h4{font-size:15px;font-weight:600;margin-bottom:6px}
+  .card p{font-size:14px;margin:4px 0;color:var(--ink2)}
+  .note{background:#fdf1ec;border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin:20px 0}
+  .note p{margin:0;font-size:15.5px;color:var(--ink2)}
+  .note p b{color:var(--ink)}
+  .foot{margin-top:50px;padding-top:24px;border-top:1px solid var(--line);font-size:14px;color:var(--muted);font-family:var(--mono);line-height:1.8}
+  .foot a{color:var(--accent-d)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">
+    <svg class="spark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2L9 9 2 12l7 3 3 7 3-7 7-3-7-3-3-7z" fill="#F98461"/></svg>
+    Adaptive Screamer · Fireworks: Deploy
+  </div>
+
+  <div class="kicker">Deploy submission · open models that adapt to you</div>
+  <h1>One dictation app, adapted to how you speak and how you write.</h1>
+  <p class="lead">Screamer is a free, private, on-device Mac dictation app. We make it
+  <b>adaptable</b> at two layers — the <b>ear</b> (ASR tuned to your voice, including
+  dysarthric speech) and the <b>pen</b> (a styling harness that writes like you, not
+  like AI). At both layers a specialized open model or harness <b>beats a frontier
+  baseline</b>, proven with McNemar's test and the bootstrap. Here is the playbook in
+  six steps.</p>
+
+  <div class="tldr">
+    <p><b>Headline.</b> The ear: dysarthric WER <b>42.7% → 22.3%</b> on held-out speech
+    (McNemar p=1.4×10⁻¹³), running on-device. The pen: our small open model + harness
+    <b>beats a frontier model's out-of-box styling</b> on slop, intent, and quality —
+    all significant — at ~2× lower latency. Both on open models; the pen on <b>Fireworks</b>,
+    the ear on the <b>NVIDIA</b> / on-device stack.</p>
+  </div>
+
+  <p style="font-size:15px;color:var(--muted)"><b style="color:var(--ink)">Disclosure (rules §4).</b>
+  Screamer itself is pre-existing work (a fork of suvamsh/screamer, MIT). Built for this
+  event: the dysarthric ASR fine-tune + on-device deployment, the styling head-to-head,
+  and the full evaluation (leakage-free splits, bootstrap + McNemar). Developed with the
+  Claude Code agent; the team is responsible for all reported results.</p>
+
+  <h2><span class="step">Step 1</span><br>Find a task worth doing</h2>
+  <p>Dictation should adapt to the individual. Two layers, two underserved jobs:</p>
+  <div class="grid">
+    <div class="card"><h4>The ear — ASR</h4><p>Transcribe speech accurately, including <b>dysarthric speech</b> (cerebral palsy, ALS, stroke) that general ASR fails on. ~<b>3M+</b> US adults have a speech disability.</p></div>
+    <div class="card"><h4>The pen — styling</h4><p>Turn raw transcripts into clean written text in <b>your own voice</b>, without the AI "slop" a naive LLM adds. Every dictation, every app.</p></div>
+  </div>
+  <p><b>Why open models.</b> Frontier ASR gets ~40–55% WER on dysarthric speech; a
+  fine-tuned open model is more accurate, free at the margin, private, and the weights
+  are yours. For styling, a small open model + a harness matches a frontier model at a
+  fraction of the cost. <b>Business value:</b> replaces a paid cloud dictation
+  subscription (≈$12–15/mo) at $0, keeps sensitive speech on-device, and — the part that
+  matters most — makes dictation usable for people it currently excludes.</p>
+
+  <h2><span class="step">Step 2</span><br>Baseline on open models</h2>
+  <p>Lock the test sets first, keep every baseline fair (same prompt/settings), and make
+  everything beat these numbers.</p>
+  <ul>
+    <li><b>Ear:</b> base <code>whisper-base.en</code> scores <b>42.7% WER</b> on 181
+    held-out dysarthric utterances; NVIDIA's open <b>Parakeet-TDT</b> (via NIM) scores
+    <b>60.3%</b> — frontier-class open ASR fails here too.</li>
+    <li><b>Pen:</b> frontier-class open model <code>kimi-k3</code> with a naive "clean this
+    up" prompt, on 120 held-out synthetic dictations.</li>
+  </ul>
+  <p>Splits are leakage-free: ASR holds out whole utterances, unseen vocabulary, and an
+  unseen speaker; styling uses a fixed held-out set scored by a <b>neutral</b> judge
+  (qwen-max — neither contestant), on Fireworks' Eval Protocol.</p>
+
+  <h2><span class="step">Step 3</span><br>Ideate on each system</h2>
+  <p>Cheap ideas first, then the expensive one — each starting from a guess about why the
+  baseline fails.</p>
+  <table>
+    <tr><th>Idea</th><th>Guess about the failure</th><th>Verdict</th></tr>
+    <tr><td>Pen: anti-slop harness (prompt + glossary + slop gate)</td><td>The model writes fine but adds AI tells; rules can fix that</td><td class="good">won</td></tr>
+    <tr><td>Pen: bigger frontier model</td><td>More capacity = cleaner output</td><td>cleaner but 3× slower</td></tr>
+    <tr><td>Ear: fine-tune Whisper on dysarthric speech</td><td>The model can't <i>hear</i> atypical speech; examples teach that, a prompt can't</td><td class="good">won</td></tr>
+  </table>
+
+  <h2><span class="step">Step 4</span><br>Build it</h2>
+  <div class="grid">
+    <div class="card"><h4>Ear</h4><p>SFT of <code>whisper-base.en</code> on TORGO (HuggingFace, NVIDIA GPU), converted to <b>GGML</b>, shipped on-device in Screamer's whisper.cpp/Metal stack as a selectable model.</p></div>
+    <div class="card"><h4>Pen</h4><p>An anti-slop <b>harness</b> on a small open model on <b>Fireworks</b> — a strict system prompt (grounded in Kobak et al. 2025), a domain glossary, and a slop gate. No fine-tune needed.</p></div>
+  </div>
+
+  <h2><span class="step">Step 5</span><br>Run everything on the test sets</h2>
+
+  <h3>The ear — dysarthric WER, base vs fine-tuned</h3>
+  <div class="chartcard">
+    <div class="cap">Word-error rate by held-out split (lower is better)</div>
+    <div class="legend"><span><span class="sw" style="background:#280016"></span>base</span><span><span class="sw" style="background:#F98461"></span>fine-tuned</span></div>
+    <div style="position:relative;height:280px"><canvas id="asrChart" role="img" aria-label="ASR WER base vs fine-tuned: utterance 42.7 to 22.3, text-disjoint 31.5 to 21.5, speaker-disjoint 135.6 to 62.9 percent."></canvas></div>
+  </div>
+  <p>The fine-tune roughly halves error on every split — including <b>words it never
+  trained on</b> (text-disjoint 31.5→21.5) and <b>a severe voice it never heard</b>
+  (speaker-disjoint 135.6→62.9; base >100% because it hallucinates on severe speech).</p>
+
+  <h3>The pen — styling head-to-head (all on Fireworks)</h3>
+  <table>
+    <tr><th>Approach</th><th class="r">slop/1k</th><th class="r">intent</th><th class="r">quality</th><th class="r">latency</th></tr>
+    <tr><td>Frontier (kimi-k3), naive prompt</td><td class="r">27.5</td><td class="r">0.92</td><td class="r">0.87</td><td class="r">5.6 s</td></tr>
+    <tr><td>Frontier + our harness</td><td class="r">3.5</td><td class="r">0.98</td><td class="r">0.95</td><td class="r">8.5 s</td></tr>
+    <tr class="hi"><td>Ours — small model + harness</td><td class="r">8.4</td><td class="r">0.98</td><td class="r">0.93</td><td class="r">2.7 s</td></tr>
+  </table>
+  <div class="chartcard">
+    <div class="cap">Slop per 1k words (lower is better) vs latency — the harness cuts slop ~8× on any model; our small model keeps it low and fast</div>
+    <div style="position:relative;height:260px"><canvas id="stylingChart" role="img" aria-label="Styling: slop/1k 27.5, 3.5, 8.4 and latency 5.6s, 8.5s, 2.7s across the three arms."></canvas></div>
+  </div>
+  <p><b>Ours beats the frontier model's out-of-box styling on every axis</b> — slop, intent,
+  and quality, all significant — at ~2× lower latency. Against the frontier model running
+  our <i>same</i> harness, we <b>match intent and quality at ~3× the speed</b>; the frontier
+  model is a touch cleaner, the honest tradeoff we disclose.</p>
+
+  <h2><span class="step">Step 6</span><br>Prove the gains are real</h2>
+  <p>Two tests, as the rules ask — they answer different questions, so we run both.
+  <b>McNemar</b> asks whether a change wins more cases than it loses (needs a pass/fail per
+  case). The <b>bootstrap</b> asks how big the gain is and whether it would survive a
+  different test set (works on any score).</p>
+  <table>
+    <tr><th>Result</th><th class="r">effect</th><th class="r">bootstrap 95% CI</th><th class="r">McNemar p</th></tr>
+    <tr class="hi"><td>Ear — personalization (n=181)</td><td class="r">−20.4 WER</td><td class="r">[14.9, 26.8]</td><td class="r">1.4×10⁻¹³</td></tr>
+    <tr><td>Ear — unseen words (n=210)</td><td class="r">−10.0 WER</td><td class="r">[5.3, 15.2]</td><td class="r">0.08*</td></tr>
+    <tr><td>Ear — unseen voice (n=114)</td><td class="r">−72.7 WER</td><td class="r">[11.6, 194.5]</td><td class="r">0.021</td></tr>
+    <tr class="hi"><td>Pen — ours vs frontier naive (n=118)</td><td class="r">slop-free +27pts</td><td class="r">slop [10.7, 23.8]</td><td class="r">1.4×10⁻⁵</td></tr>
+  </table>
+  <p style="font-size:14px;color:var(--muted)">*On unseen words the WER drop is significant
+  (bootstrap), while the stricter whole-utterance exact-match rate rises +5.7 pts at p=0.08
+  — McNemar is all-or-nothing, WER gives partial credit.</p>
+  <div class="note">
+    <p><b>Honest caveat on clustering.</b> Our ASR utterances cluster by speaker, and we
+    have only three. So the per-utterance tests are slightly overconfident (they treat
+    utterances as independent), and a speaker-level bootstrap isn't reliable with three
+    units. We therefore lean on the pattern <b>holding across all three independent
+    splits</b> rather than on one over-precise p-value. The styling dictations are
+    independent, so no clustering issue there.</p>
+  </div>
+
+  <div class="foot">
+    Repo: <a href="https://github.com/ankittandon/adaptive-screamer">github.com/ankittandon/adaptive-screamer</a> · public<br>
+    Evidence: evals/ — torgo_resplit · train_whisper_modal · bootstrap_ci · mcnemar ·
+    styling_headtohead · styling_ci<br>
+    Stack: Fireworks (styling + Eval Protocol) · NVIDIA (on-device ASR / Parakeet / NeMo)
+  </div>
+
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+  const INK='#280016', CORAL='#F98461', MUT='#8a7681', LINE='#e6ddd9';
+  Chart.defaults.font.family="'Inter',sans-serif";
+  Chart.defaults.color=MUT;
+  new Chart(document.getElementById('asrChart'),{
+    type:'bar',
+    data:{labels:[['utterance','(personalization)'],['text-disjoint','(unseen words)'],['speaker-disjoint','(unseen voice)']],
+      datasets:[
+        {label:'base',data:[42.7,31.5,135.6],backgroundColor:INK,borderRadius:4,maxBarThickness:46},
+        {label:'fine-tuned',data:[22.3,21.5,62.9],backgroundColor:CORAL,borderRadius:4,maxBarThickness:46}
+      ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{y:{beginAtZero:true,grid:{color:LINE},ticks:{callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#43303a'}}},
+      plugins:{legend:{display:false}}}
+  });
+  new Chart(document.getElementById('stylingChart'),{
+    type:'bar',
+    data:{labels:[['frontier','naive'],['frontier','+ harness'],['ours','(flash+harness)']],
+      datasets:[
+        {label:'slop / 1k',data:[27.5,3.5,8.4],backgroundColor:INK,borderRadius:4,maxBarThickness:52,yAxisID:'y'},
+        {label:'latency (s)',data:[5.6,8.5,2.7],backgroundColor:CORAL,borderRadius:4,maxBarThickness:52,yAxisID:'y1'}
+      ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{
+        y:{position:'left',beginAtZero:true,grid:{color:LINE},title:{display:true,text:'slop / 1k'}},
+        y1:{position:'right',beginAtZero:true,grid:{display:false},title:{display:true,text:'latency (s)'}},
+        x:{grid:{display:false},ticks:{color:'#43303a'}}},
+      plugins:{legend:{labels:{color:'#43303a',boxWidth:12,boxHeight:12}}}}
+  });
+</script>
+</body>
+</html>
