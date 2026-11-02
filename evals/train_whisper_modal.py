@@ -251,6 +251,54 @@ def eval_strata(
     return result
 
 
+@app.function(image=image, gpu="T4", volumes={"/data": vol}, timeout=60 * 30)
+def eval_dump(
+    manifest: str = "manifest.jsonl",
+    tuned: str = "/data/whisper-base-torgo",
+    split: str = "eval",
+    tag: str = "run",
+):
+    """Dump per-utterance base + tuned hypotheses to the volume, so bootstrap
+    confidence intervals / significance tests can be computed downstream
+    (bootstrap_ci.py). One row per utterance: {speaker, ref, base, tuned}."""
+    import json
+
+    import torch
+    from datasets import Audio, Dataset
+    from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+    rows = [json.loads(l) for l in open(f"/data/{manifest}")]
+    rows = [r for r in rows if r["split"] == split]
+    root = "/data/torgo"
+    proc = WhisperProcessor.from_pretrained(BASE)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    ds = Dataset.from_dict(
+        {"audio": [f"{root}/{r['audio']}" for r in rows]}
+    ).cast_column("audio", Audio(sampling_rate=16000))
+
+    def transcribe_all(model_path):
+        model = WhisperForConditionalGeneration.from_pretrained(model_path).to(device).eval()
+        hyps = []
+        for i in range(0, len(ds), 16):
+            feats = proc.feature_extractor(
+                [a["array"] for a in ds[i : i + 16]["audio"]], sampling_rate=16000, return_tensors="pt"
+            ).input_features.to(device)
+            with torch.no_grad():
+                ids = model.generate(feats, max_new_tokens=225)
+            hyps.extend(proc.tokenizer.batch_decode(ids, skip_special_tokens=True))
+        return hyps
+
+    base_h, tuned_h = transcribe_all(BASE), transcribe_all(tuned)
+    out = f"/data/eval_dump_{tag}.jsonl"
+    with open(out, "w") as f:
+        for r, b, t in zip(rows, base_h, tuned_h):
+            f.write(json.dumps({"speaker": r["speaker"], "ref": r["text"], "base": b, "tuned": t}) + "\n")
+    vol.commit()
+    print(f"wrote {out} ({len(rows)} rows)")
+    return out
+
+
 @app.function(image=image, volumes={"/data": vol}, timeout=60 * 30)
 def convert_ggml():
     """Convert the fine-tuned HF model to whisper.cpp GGML on the volume.
