@@ -27,7 +27,7 @@ default = []
 cpal = "0.15"
 objc2 = "0.6"
 block2 = "0.6"
-whisper-rs = { version = "0.14", features = ["metal"] }
+whisper-rs = { version = "0.16", features = ["metal"] }
 objc2-foundation = { version = "0.3", features = [
     "NSDate",
     "NSAttributedString",
