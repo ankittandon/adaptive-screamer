@@ -55,10 +55,13 @@
 <body>
 <div class="stage">
 
-  <section class="slide active">
+  <section class="slide active" style="align-items:flex-start">
     <div class="kick"><svg class="spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L9 9 2 12l7 3 3 7 3-7 7-3-7-3-3-7z" fill="#F98461"/></svg>Fireworks: Deploy · Project Possibility</div>
-    <h1>Screamer</h1>
-    <p class="lead" style="margin-top:20px">Adaptive, on-device dictation — that works for the people mainstream AI leaves behind.</p>
+    <div style="display:flex;align-items:center;gap:22px;margin-bottom:4px">
+      <img src="screamer-logo.png" alt="Screamer" style="width:96px;height:96px;filter:drop-shadow(0 2px 6px rgba(40,0,22,.12))">
+      <h1>Screamer</h1>
+    </div>
+    <p class="lead" style="margin-top:14px">Adaptive, on-device dictation — that works for the people mainstream AI leaves behind.</p>
     <p style="margin-top:12px">Built for <b>Project Possibility</b>, a non-profit making software for people with disabilities.</p>
     <div class="byline">Ankit Tandon · PM, Intuit &nbsp;|&nbsp; Sunanda · PM, Snowflake</div>
   </section>
@@ -85,24 +88,30 @@
   <section class="slide">
     <span class="pill">The money slide</span>
     <h2>Open models, fine-tuned, beat frontier — on the people they fail</h2>
-    <table>
-      <tr><th>Specialized fine-tune (held-out)</th><th class="r">Base</th><th class="r">Tuned</th></tr>
-      <tr><td>Dysarthric speech — TORGO (female)</td><td class="r">42.7%</td><td class="r good">22.3%</td></tr>
-      <tr><td>Dysarthric speech — TORGO (male)</td><td class="r">161.6%</td><td class="r good">33.5%</td></tr>
-      <tr><td>Non-native / accented — L2-ARCTIC</td><td class="r">14.9%</td><td class="r good">5.7%</td></tr>
-    </table>
-    <p style="margin-top:20px" class="big"><span class="accent">Statistically significant</span> — bootstrap + McNemar. A small model, in <b>Rust</b>, running <b>on-device</b>: free, private, and fast.</p>
-    <p class="note">Base &gt;100% = the frontier model hallucinates more words than were spoken on severe speech.</p>
+    <div style="display:flex;gap:18px;margin:10px 0 6px;font-size:14px;color:var(--ink2)">
+      <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#280016;vertical-align:-1px"></span> base</span>
+      <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#F98461;vertical-align:-1px"></span> fine-tuned</span>
+      <span style="color:var(--muted)">word-error rate · lower is better</span>
+    </div>
+    <div style="text-align:center"><canvas id="asrChart" width="960" height="230" style="max-width:100%"></canvas></div>
+    <p style="margin-top:14px" class="big"><span class="accent">Statistically significant</span> — bootstrap + McNemar. A small model, in <b>Rust</b>, <b>on-device</b>: free, private, fast.</p>
   </section>
 
   <section class="slide">
     <div class="kick">The styling layer</div>
     <h2>It writes like <span class="accent">you</span> — not like AI</h2>
-    <ul>
-      <li>An LLM rewrites your raw transcript into clean writing in your own voice — stripping AI <b>"slop"</b> (em-dashes, buzzwords, filler).</li>
-      <li>We <b>fine-tuned an NVIDIA open model</b> to do it, scored against a slop metric (Kobak et al.) — it <b>beats a frontier model's out-of-the-box output</b>, significantly.</li>
-      <li>And it learns from <b>you</b>: every time you keep or revert a rewrite, that's the signal that personalizes it — <b>on-device</b>, from a handful of corrections.</li>
-    </ul>
+    <p style="margin-top:4px">An LLM rewrites raw speech into clean writing in your voice, stripping AI <b>"slop."</b> Built on <b>Fireworks</b> + its <b>Eval Protocol</b> — it <b>beats a frontier model's out-of-box output</b>, and learns from your keep/revert feedback on-device.</p>
+    <div style="display:flex;align-items:center;gap:28px;margin-top:18px">
+      <div style="flex:1;text-align:center">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:4px">AI-slop / 1k words · lower is better</div>
+        <canvas id="slopChart" width="520" height="170" style="max-width:100%"></canvas>
+      </div>
+      <div style="font-size:19px;color:var(--ink2);min-width:200px;line-height:1.7">
+        intent <b>0.92 → <span class="good">0.98</span></b><br>
+        quality <b>0.87 → <span class="good">0.93</span></b><br>
+        <span class="accent" style="font-size:16px">significant · McNemar p=1.4×10⁻⁵</span>
+      </div>
+    </div>
   </section>
 
   <section class="slide">
@@ -127,6 +136,25 @@
 
 <div class="foot" id="dots"></div>
 <div class="count" id="count"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+  (function(){
+    if(!window.Chart) return;
+    const INK='#280016', CORAL='#F98461', LINE='#e6ddd9', MUT='#8a7681';
+    Chart.defaults.font.family="'Inter',sans-serif"; Chart.defaults.color=MUT;
+    new Chart(document.getElementById('asrChart'),{type:'bar',
+      data:{labels:[['TORGO','female'],['TORGO','male'],['L2-ARCTIC','accented']],
+        datasets:[{label:'base',data:[42.7,161.6,14.9],backgroundColor:INK,borderRadius:4,maxBarThickness:58},
+                  {label:'tuned',data:[22.3,33.5,5.7],backgroundColor:CORAL,borderRadius:4,maxBarThickness:58}]},
+      options:{responsive:false,plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:true,grid:{color:LINE},ticks:{color:MUT,callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#43303a',font:{size:13}}}}}});
+    new Chart(document.getElementById('slopChart'),{type:'bar',
+      data:{labels:['frontier (naive)','ours (Fireworks)'],
+        datasets:[{data:[27.5,8.4],backgroundColor:[INK,CORAL],borderRadius:4,maxBarThickness:72}]},
+      options:{responsive:false,plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:true,grid:{color:LINE},ticks:{color:MUT}},x:{grid:{display:false},ticks:{color:'#43303a',font:{size:13}}}}}});
+  })();
+</script>
 <script>
   const slides=[...document.querySelectorAll('.slide')];
   const dots=document.getElementById('dots'), count=document.getElementById('count');
