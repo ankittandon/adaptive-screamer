@@ -136,19 +136,6 @@ Reproduce: `evals/generate_styling_eval.py`, `evals/styling_headtohead.py`,
 `evals/styling_ci.py`, `evals/mcnemar.py`; results in
 `evals/results/styling_headtohead.jsonl`.
 
-**What we tried (and what it taught us).** We tested an **NVIDIA Nemotron** as the
-styling model to keep the pen layer NVIDIA-native. Two honest findings:
-`nemotron-3-ultra` isn't fine-tunable (FP4-quantized), and *prompt-only* it ties
-the naive baseline on slop (slop-free 46% vs 46%, McNemar p=1.0) — a strong model
-that doesn't follow strict anti-slop rules from a prompt alone. The tunable
-`nemotron-lightning-3p5-30b` would fix that with a fine-tune, so we built the
-training set (319 eval-disjoint anti-slop pairs, `evals/data/styling_sft.jsonl`) —
-but **Fireworks dataset uploads are disabled on our account**, so the SFT can't
-run yet. Takeaway, consistent with the sample playbook's "report what didn't win":
-strict styling needs a *fine-tune*, not just a prompt — and the NVIDIA
-fine-tuning proof for this submission is the Parakeet/NeMo ASR work (§4), not the
-blocked styling SFT. The shipped styling model is therefore deepseek-flash (above).
-
 ---
 
 ## 3. Efficiency tradeoff (disclosed per rule 8)
