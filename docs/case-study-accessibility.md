@@ -109,6 +109,42 @@ headline moves:
 The severe-speaker *long sentences* remain the hard frontier; the biggest wins
 are on the shorter word- and phrase-length utterances the model adapted to.
 
+## How we know it isn't overfitting
+
+Fine-tuning on TORGO and evaluating on TORGO invites the obvious question: did we
+just memorize the test set? We take it seriously, because our first split had two
+real shortcuts — **84% of eval sentences also appeared in training** (TORGO has
+everyone read the same prompts) and the **same speakers** were on both sides. So
+we re-ran against two harder, leakage-free splits, and bootstrapped every number.
+
+**Three held-out splits** (base vs fine-tuned WER; reduction with a 95% bootstrap
+CI over 10,000 resamples and a one-sided paired p-value):
+
+| Split — what it tests | n | Base | Tuned | Reduction (95% CI) | p |
+|---|--:|--:|--:|---|--:|
+| **Utterance** — adaptation to a known user | 181 | 42.7% | 22.3% | **−20.4 [14.9, 26.8]** | <0.0001 |
+| **Text-disjoint** — words never seen in training | 210 | 31.5% | 21.5% | **−10.0 [5.3, 15.2]** | <0.0001 |
+| **Speaker-disjoint** — a severe voice never heard | 114 | 135.6% | 62.9% | **−72.7 [11.6, 194.5]** | <0.0001 |
+
+Every reduction CI excludes zero, and the gain holds **per severity stratum** on
+the text-disjoint split too (severe −28.8, moderate −7.3, mild −8.4, all p < 0.02).
+So the win survives removing both shortcuts: the model transcribes **words it
+never trained on** and a **voice it never heard** — it learned dysarthric
+acoustics, not TORGO's vocabulary. (The reduction is a *paired* statistic — base
+and tuned are scored on the same clips — so it's estimated tightly even though
+absolute dysarthric WER is high-variance clip to clip.)
+
+Supporting guards: eval clips are excluded from training; the checkpoint is
+selected by held-out WER (`load_best_model_at_end`), not train loss; and small LR
+/ few epochs / encoder-freeze limit memorization. And in the continuous-learning
+loop, a **validation gate** promotes a new adapter only if held-out WER improves —
+so the product structurally refuses to ship a model that overfit.
+
+Match the eval to the claim: for **personalization** (adapting to one user's voice
+and vocabulary) the utterance split is the *correct* test and −48% relative is
+valid; for the broader **"we improved dysarthric ASR"** claim, the text- and
+speaker-disjoint numbers are the honest ones.
+
 ## Deployment: it runs in the app
 
 The point was never a checkpoint on a leaderboard — it was a model a real user

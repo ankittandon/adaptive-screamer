@@ -171,6 +171,33 @@
   genuinely usable dictation, the largest relative gain. Severe-speaker <i>long sentences</i>
   stay hard; the biggest wins are on the shorter utterances the model adapted to.</p>
 
+  <h2>How we know it isn't overfitting</h2>
+  <p>Fine-tuning on TORGO and testing on TORGO invites the question: did we just
+  memorize the test set? Our first split had two real shortcuts — <b>84% of eval
+  sentences also appeared in training</b> (TORGO repeats prompts) and the <b>same
+  speakers</b> were on both sides. So we re-ran against two leakage-free splits and
+  bootstrapped every number (10,000 resamples; reduction is a paired statistic,
+  with a one-sided p-value):</p>
+  <table>
+    <tr><th>Split — what it tests</th><th class="r">n</th><th class="r">Base</th><th class="r">Tuned</th><th class="r">Reduction (95% CI)</th><th class="r">p</th></tr>
+    <tr class="hi"><td>Utterance — known user</td><td class="r">181</td><td class="r">42.7%</td><td class="r good">22.3%</td><td class="r">−20.4 [14.9, 26.8]</td><td class="r">&lt;0.0001</td></tr>
+    <tr class="hi"><td>Text-disjoint — unseen words</td><td class="r">210</td><td class="r">31.5%</td><td class="r good">21.5%</td><td class="r">−10.0 [5.3, 15.2]</td><td class="r">&lt;0.0001</td></tr>
+    <tr class="hi"><td>Speaker-disjoint — unseen voice</td><td class="r">114</td><td class="r">135.6%</td><td class="r good">62.9%</td><td class="r">−72.7 [11.6, 194.5]</td><td class="r">&lt;0.0001</td></tr>
+  </table>
+  <p><b>Every reduction CI excludes zero</b>, and the gain holds per severity
+  stratum on the text-disjoint split (severe −28.8, moderate −7.3, mild −8.4, all
+  p&nbsp;&lt;&nbsp;0.02). The win survives removing both shortcuts — the model
+  transcribes <b>words it never trained on</b> and a <b>voice it never heard</b>,
+  so it learned dysarthric acoustics, not TORGO's vocabulary.</p>
+  <div class="callout">
+    <p><b>Match the eval to the claim:</b> for <b>personalization</b> (adapting to
+    one user) the utterance split is the correct test and −48% relative is valid;
+    for the broader <b>"we improved dysarthric ASR"</b> claim, the text- and
+    speaker-disjoint numbers are the honest ones. Guards: eval clips excluded from
+    training, checkpoint chosen by held-out WER, and a flywheel validation gate
+    that refuses to ship a model that overfit.</p>
+  </div>
+
   <h2>Deployment: it runs in the app</h2>
   <p>The point was never a checkpoint on a leaderboard — it was a model a real user can
   select. So we took it the last mile:</p>
