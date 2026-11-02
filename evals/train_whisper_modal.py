@@ -42,7 +42,13 @@ vol = modal.Volume.from_name("torgo-data", create_if_missing=True)
 
 
 @app.function(image=image, gpu="T4", volumes={"/data": vol}, timeout=60 * 60 * 3)
-def train(epochs: int = 8, lr: float = 1e-5, batch: int = 16):
+def train(
+    epochs: int = 8,
+    lr: float = 1e-5,
+    batch: int = 16,
+    manifest: str = "manifest.jsonl",
+    out_dir: str = "/data/whisper-base-torgo",
+):
     import json
     import re
     from dataclasses import dataclass
@@ -58,7 +64,7 @@ def train(epochs: int = 8, lr: float = 1e-5, batch: int = 16):
         WhisperProcessor,
     )
 
-    rows = [json.loads(l) for l in open("/data/manifest.jsonl")]
+    rows = [json.loads(l) for l in open(f"/data/{manifest}")]
     root = "/data/torgo"
     proc = WhisperProcessor.from_pretrained(BASE)
 
@@ -118,7 +124,7 @@ def train(epochs: int = 8, lr: float = 1e-5, batch: int = 16):
     model.generation_config.max_length = 225
 
     args = Seq2SeqTrainingArguments(
-        output_dir="/data/whisper-base-torgo",
+        output_dir=out_dir,
         per_device_train_batch_size=batch,
         per_device_eval_batch_size=batch,
         gradient_accumulation_steps=1,
@@ -154,16 +160,20 @@ def train(epochs: int = 8, lr: float = 1e-5, batch: int = 16):
     tuned_wer = trainer.evaluate()["eval_wer"]
     print(f"TUNED WER (eval): {tuned_wer:.1f}%")
 
-    trainer.save_model("/data/whisper-base-torgo")
-    proc.save_pretrained("/data/whisper-base-torgo")
+    trainer.save_model(out_dir)
+    proc.save_pretrained(out_dir)
     vol.commit()
     print(f"\n=== RESULT ===\nbase {base_wer:.1f}% -> tuned {tuned_wer:.1f}% "
-          f"(delta {base_wer - tuned_wer:+.1f} pts) | model saved to volume /whisper-base-torgo")
+          f"(delta {base_wer - tuned_wer:+.1f} pts) | model saved to volume {out_dir}")
     return {"base_wer": base_wer, "tuned_wer": tuned_wer}
 
 
 @app.function(image=image, gpu="T4", volumes={"/data": vol}, timeout=60 * 30)
-def eval_strata(split: str = "eval"):
+def eval_strata(
+    split: str = "eval",
+    manifest: str = "manifest.jsonl",
+    tuned: str = "/data/whisper-base-torgo",
+):
     """Base vs fine-tuned WER on the held-out split, broken down by speaker
     (severity stratum). Same normalization as training's compute_metrics, so the
     'ALL' row reproduces the headline base->tuned number.
@@ -176,7 +186,7 @@ def eval_strata(split: str = "eval"):
     from datasets import Audio, Dataset
     from transformers import WhisperForConditionalGeneration, WhisperProcessor
 
-    rows = [json.loads(l) for l in open("/data/manifest.jsonl")]
+    rows = [json.loads(l) for l in open(f"/data/{manifest}")]
     rows = [r for r in rows if r["split"] == split]
     root = "/data/torgo"
     proc = WhisperProcessor.from_pretrained(BASE)
@@ -223,7 +233,7 @@ def eval_strata(split: str = "eval"):
         return out
 
     base = wer_by_speaker(transcribe_all(BASE))
-    tuned = wer_by_speaker(transcribe_all("/data/whisper-base-torgo"))
+    tuned = wer_by_speaker(transcribe_all(tuned))
 
     sev = {"F01": "severe", "F03": "moderate", "F04": "mild"}
     print(f"\n=== base vs fine-tuned WER by stratum ({split} split) ===")
