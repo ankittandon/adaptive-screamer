@@ -31,6 +31,11 @@ from judge import INTENT_SYSTEM, QUALITY_SYSTEM, _parse_score  # noqa: E402
 
 ENDPOINT = "https://api.fireworks.ai/inference/v1/chat/completions"
 FRONTIER = "accounts/fireworks/models/kimi-k3"
+# Ours: deepseek-flash (small, strong instruction-following) is the shipped model.
+# We tried NVIDIA Nemotron for the NVIDIA track: nemotron-3-ultra isn't tunable
+# (FP4), and the tunable nemotron-lightning couldn't be fine-tuned because
+# Fireworks dataset uploads are disabled on this account (documented friction).
+# Prompt-only, Nemotron ties the naive baseline on slop (see results/styling_nemotron).
 OURS = "accounts/fireworks/models/deepseek-v4p1-flash-1017"
 JUDGE = "accounts/fireworks/models/qwen3p8-max"
 
@@ -145,7 +150,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--arms", default="", help="comma list to run a subset, e.g. A3_ours")
+    ap.add_argument("--out", default="results/styling_headtohead.jsonl")
     a = ap.parse_args()
+    if a.arms:
+        keep = {x.strip() for x in a.arms.split(",")}
+        global ARMS
+        ARMS = [arm for arm in ARMS if arm[0] in keep]
     rows = [json.loads(l) for l in open("data/styling_eval.jsonl")]
     if a.limit:
         rows = rows[: a.limit]
@@ -158,7 +169,7 @@ def main():
             if done % 10 == 0:
                 print(f"  {done}/{len(rows)} dictations", file=sys.stderr)
     Path("results").mkdir(exist_ok=True)
-    dest = Path("results/styling_headtohead.jsonl")
+    dest = Path(a.out)
     dest.write_text("\n".join(json.dumps(r) for r in results) + "\n")
     print(f"wrote {len(results)} rows ({len(rows)} dictations x {len(ARMS)} arms) -> {dest}")
 
