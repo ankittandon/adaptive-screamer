@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screamer — Talk Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#F9F7F5; --panel:#fffdfb; --ink:#280016; --ink2:#5c3345; --muted:#8a7681;
+    --line:#e6ddd9; --accent:#F98461; --accent-d:#c2410c; --good:#1d7a4f;
+    --serif:"Crimson Text",Georgia,serif; --sans:"Inter",-apple-system,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:#efe9e4;color:var(--ink);font-family:var(--sans);overflow:hidden}
+  .stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  .slide{display:none;width:min(1120px,94vw);height:min(630px,90vh);background:var(--cream);
+    border:1px solid var(--line);border-radius:20px;padding:60px 68px;flex-direction:column;
+    justify-content:center;position:relative;box-shadow:0 1px 0 rgba(40,0,22,.04)}
+  .slide.active{display:flex;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .kick{font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-d);font-weight:500;margin-bottom:18px}
+  h1{font-family:var(--serif);font-size:62px;line-height:1.04;font-weight:600;letter-spacing:-.01em}
+  h2{font-family:var(--serif);font-size:40px;line-height:1.1;font-weight:600;margin-bottom:22px}
+  p{font-size:21px;line-height:1.55;color:var(--ink2);max-width:62ch}
+  p.lead{font-size:24px;color:var(--ink)}
+  b,strong{color:var(--ink);font-weight:600}
+  .accent{color:var(--accent-d)} .good{color:var(--good)}
+  .row{display:flex;gap:16px;margin-top:26px;flex-wrap:wrap}
+  .tile{flex:1;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .tile .lab{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .tile .num{font-family:var(--serif);font-size:44px;font-weight:600;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+  .tile .sub{font-size:14px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;margin-top:16px;font-size:20px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line)}
+  th{font-family:var(--mono);color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  td.r,th.r{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  td .arrow{color:var(--accent-d);font-weight:600}
+  ul{margin-top:18px;padding-left:24px} li{font-size:21px;line-height:1.6;color:var(--ink2);margin-bottom:10px}
+  li b{color:var(--ink)}
+  .byline{margin-top:30px;font-family:var(--mono);font-size:15px;color:var(--muted)}
+  .note{font-size:16px;color:var(--muted);margin-top:22px;font-style:italic}
+  .big{font-size:26px;color:var(--ink);line-height:1.5}
+  .spark{width:30px;height:30px;vertical-align:-5px;margin-right:6px}
+  .foot{position:fixed;bottom:18px;left:0;right:0;display:flex;justify-content:center;gap:9px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#d8ccc5;cursor:pointer}
+  .dot.on{background:var(--accent-d);width:22px;border-radius:4px}
+  .count{position:fixed;bottom:15px;right:24px;font-family:var(--mono);color:var(--muted);font-size:13px}
+  .pill{display:inline-block;font-family:var(--mono);font-size:12px;color:var(--accent-d);border:1px solid var(--accent);border-radius:999px;padding:4px 12px;margin-bottom:18px;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <section class="slide active">
+    <div class="kick"><svg class="spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L9 9 2 12l7 3 3 7 3-7 7-3-7-3-3-7z" fill="#F98461"/></svg>Fireworks: Deploy · Project Possibility</div>
+    <h1>Screamer</h1>
+    <p class="lead" style="margin-top:20px">Adaptive, on-device dictation — that works for the people mainstream AI leaves behind.</p>
+    <p style="margin-top:12px">Built for <b>Project Possibility</b>, a non-profit making software for people with disabilities.</p>
+    <div class="byline">Ankit Tandon · PM, Intuit &nbsp;|&nbsp; Sunanda · PM, Snowflake</div>
+  </section>
+
+  <section class="slide">
+    <div class="kick">What it is</div>
+    <h2>Like Wispr Flow — but local, and it adapts to you</h2>
+    <p class="lead">Screamer runs entirely on your laptop on on-device models. It adapts to <b>how you speak</b> and <b>how you write</b>.</p>
+    <p style="margin-top:16px">Hold <b>left-control</b> → it listens, transcribes, and styles your text. Instantly. Nothing leaves your machine.</p>
+    <p class="note">[ Live demo: dictate a line ]</p>
+  </section>
+
+  <section class="slide">
+    <div class="kick">The problem — and why it's worth billions</div>
+    <h2>Mainstream speech is solved. The edges aren't.</h2>
+    <div class="row">
+      <div class="tile"><div class="lab">Mainstream</div><div class="num good">2–3%</div><div class="sub">WER · frontier models</div></div>
+      <div class="tile"><div class="lab">Speech disability</div><div class="num accent">40–60%</div><div class="sub">WER · out-of-the-box</div></div>
+      <div class="tile"><div class="lab">Non-native English</div><div class="num accent">10%+</div><div class="sub">1B+ speakers</div></div>
+    </div>
+    <p style="margin-top:22px" class="big">Transcription + styling that <i>just works</i> here is worth billions — Microsoft bought Nuance for <b>~$20B</b>; Abridge is valued near <b>$3B</b>. <b>Screamer can adapt to be exactly that.</b></p>
+  </section>
+
+  <section class="slide">
+    <span class="pill">The money slide</span>
+    <h2>Open models, fine-tuned, beat frontier — on the people they fail</h2>
+    <table>
+      <tr><th>Specialized fine-tune (held-out)</th><th class="r">Base</th><th class="r">Tuned</th></tr>
+      <tr><td>Dysarthric speech — TORGO (female)</td><td class="r">42.7%</td><td class="r good">22.3%</td></tr>
+      <tr><td>Dysarthric speech — TORGO (male)</td><td class="r">161.6%</td><td class="r good">33.5%</td></tr>
+      <tr><td>Non-native / accented — L2-ARCTIC</td><td class="r">14.9%</td><td class="r good">5.7%</td></tr>
+    </table>
+    <p style="margin-top:20px" class="big"><span class="accent">Statistically significant</span> — bootstrap + McNemar. A small model, in <b>Rust</b>, running <b>on-device</b>: free, private, and fast.</p>
+    <p class="note">Base &gt;100% = the frontier model hallucinates more words than were spoken on severe speech.</p>
+  </section>
+
+  <section class="slide">
+    <div class="kick">The styling layer</div>
+    <h2>It writes like <span class="accent">you</span> — not like AI</h2>
+    <ul>
+      <li>An LLM rewrites your raw transcript into clean writing in your own voice — stripping AI <b>"slop"</b> (em-dashes, buzzwords, filler).</li>
+      <li>We <b>fine-tuned an NVIDIA open model</b> to do it, scored against a slop metric (Kobak et al.) — it <b>beats a frontier model's out-of-the-box output</b>, significantly.</li>
+      <li>And it learns from <b>you</b>: every time you keep or revert a rewrite, that's the signal that personalizes it — <b>on-device</b>, from a handful of corrections.</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <div class="kick">How it fits together</div>
+    <h2>Two layers of adaptation, one private flywheel</h2>
+    <div class="row">
+      <div class="tile"><div class="lab">The ear</div><div class="num" style="font-size:30px">ASR</div><div class="sub">tuned to how you speak · on-device · NVIDIA</div></div>
+      <div class="tile"><div class="lab">The pen</div><div class="num" style="font-size:30px">Styling</div><div class="sub">tuned to how you write · Fireworks</div></div>
+      <div class="tile"><div class="lab">The flywheel</div><div class="num" style="font-size:30px">You</div><div class="sub">per-user · on-device · data never leaves</div></div>
+    </div>
+    <p style="margin-top:24px" class="big">Stack: <b>Rust · GGML · Metal</b> on-device, <b>Fireworks</b> (styling + Eval Protocol), <b>NVIDIA</b> (open models).</p>
+  </section>
+
+  <section class="slide">
+    <div class="kick">Why it matters</div>
+    <h2>Raise the floor — not just the ceiling</h2>
+    <p class="lead" style="margin-top:8px">Most of AI is a race to raise the ceiling. Specialized, <b>open</b> intelligence can raise the <b>floor</b> — making AI work for people with disabilities, non-native speakers, anyone the frontier leaves behind.</p>
+    <p style="margin-top:18px" class="big">That's the beauty of open source: intelligence anyone can <b>own and adapt</b>. <span class="accent">Accessibility for all.</span></p>
+  </section>
+
+</div>
+
+<div class="foot" id="dots"></div>
+<div class="count" id="count"></div>
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  const dots=document.getElementById('dots'), count=document.getElementById('count');
+  let i=0;
+  slides.forEach((_,n)=>{const d=document.createElement('div');d.className='dot';d.onclick=()=>go(n);dots.appendChild(d);});
+  function go(n){i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    [...dots.children].forEach((d,k)=>d.classList.toggle('on',k===i));
+    count.textContent=(i+1)+' / '+slides.length;}
+  function next(){go(i+1)} function prev(){go(i-1)}
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();next()}
+    if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prev()}
+    if(e.key==='Home')go(0); if(e.key==='End')go(slides.length-1);});
+  document.querySelector('.stage').addEventListener('click',e=>{if(e.target.closest('.dot'))return;next()});
+  go(0);
+</script>
+</body>
+</html>
