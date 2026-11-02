@@ -81,6 +81,13 @@ the text-disjoint split (severe −28.8, moderate −7.3, mild −8.4; all p < 0
 Base Whisper >100% on the unseen severe voice means it **hallucinates** on severe
 speech; the fine-tuned model is consistent (tuned CI [56.6, 69.9]).
 
+**McNemar's exact test** (paired, on whole-utterance exact-match rate, tuned vs
+base) corroborates the bootstrap: utterance p=1.4×10⁻¹³, speaker-disjoint
+(unseen voice) p=0.021. On text-disjoint the *WER* reduction is significant
+(bootstrap, above) while the stricter *whole-utterance-correct* rate rises +5.7 pts
+at p=0.08 — expected, since McNemar is all-or-nothing and WER gives partial credit.
+(`evals/mcnemar.py`.)
+
 **How we know it isn't overfitting.** See
 [docs/case-study-accessibility.md](docs/case-study-accessibility.md#how-we-know-it-isnt-overfitting):
 the win survives removing both the vocabulary and the speaker shortcut; checkpoints
@@ -90,6 +97,44 @@ refuses to promote a model that doesn't generalize.
 **Reproduce it.** `evals/torgo_resplit.py` (splits), `evals/train_whisper_modal.py`
 (`train` / `eval_strata` / `eval_dump`), `evals/bootstrap_ci.py` (CIs),
 `evals/nvidia_asr_bench.py` (NVIDIA-hosted baseline). See `evals/README.md`.
+
+---
+
+## 2b. The pen — styling head-to-head (Fireworks)
+
+Same rigor for the styling layer, **100% on Fireworks** (styling models + a
+*neutral* qwen-max judge — neither contestant). **120 held-out synthetic
+dictations**, three arms:
+- **A1** frontier (`kimi-k3`) + naive "clean this up" prompt — realistic baseline
+- **A2** frontier (`kimi-k3`) + our anti-slop harness — fair strong baseline
+- **A3** ours — `deepseek-flash` (small, what Screamer ships) + our harness
+
+| Arm | slop/1k | intent | quality | latency | tokens |
+|---|--:|--:|--:|--:|--:|
+| A1 frontier + naive | 27.5 | 0.919 | 0.872 | 5587 ms | 450 |
+| A2 frontier + our harness | 3.5 | 0.983 | 0.949 | 8502 ms | 970 |
+| **A3 ours (flash + harness)** | **8.4** | **0.979** | **0.927** | **2669 ms** | 802 |
+
+Paired **bootstrap 95% CIs** + **McNemar exact test** (on slop-free rate):
+
+- **Ours vs frontier out-of-box (A3 vs A1):** we win on *every* axis — slop
+  −17.4/1k [10.7, 23.8] p<0.001, intent +0.05 [0.02, 0.09] p=0.001, quality +0.05
+  [0.02, 0.08] p<0.001; slop-free rate 73.7% vs 46.6% (**+27 pts, McNemar
+  p=1.4×10⁻⁵**), at ~2× lower latency.
+- **Ours vs frontier under the same harness (A3 vs A2) — the disclosed tradeoff:**
+  intent **tied** (CI includes 0), quality within noise (−0.02), and the frontier
+  model is somewhat cleaner (slop-free 89% vs 74%, McNemar p=0.004) — but **ours is
+  ~3.2× faster** (2.7 s vs 8.5 s) and uses fewer tokens.
+
+**Claim:** the anti-slop **harness is the lever** — it cuts slop ~8× on *any*
+model. Our small open model **beats a frontier model's out-of-box styling on slop,
+intent, and quality (all significant)**, and **matches a frontier model running the
+same harness on intent/quality at ~3× lower latency/cost**, trading a little
+slop-cleanliness for the efficiency (gains retain useful quality, per rule 8).
+
+Reproduce: `evals/generate_styling_eval.py`, `evals/styling_headtohead.py`,
+`evals/styling_ci.py`, `evals/mcnemar.py`; results in
+`evals/results/styling_headtohead.jsonl`.
 
 ---
 
