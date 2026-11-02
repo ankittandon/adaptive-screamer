@@ -1,11 +1,11 @@
-"""Fine-tune Whisper on UASpeech (dysarthric English) (non-native/accented English) on Modal, loading
+"""Fine-tune Whisper on TORGO male dysarthric speakers (English) on Modal, loading
 the dataset straight from HuggingFace (ungated). Reports base vs fine-tuned WER
 overall and stratified by the speaker's first language (accent) — the second
 population Screamer adapts to, tying into the non-native-English business case.
 
     modal run evals/train_l2arctic_modal.py::train
 
-Dataset: ngdiana/uaspeech (16 kHz, manual transcripts,
+Dataset: resproj007/torgo_dysarthric_male (16 kHz, manual transcripts,
 native_language label). Writes per-utterance base/tuned hyps to the volume so
 the same bootstrap + McNemar tests apply.
 """
@@ -13,9 +13,9 @@ the same bootstrap + McNemar tests apply.
 import modal
 
 BASE = "openai/whisper-base.en"
-DATASET = "ngdiana/uaspeech"
+DATASET = "resproj007/torgo_dysarthric_male"
 
-app = modal.App("whisper-uaspeech")
+app = modal.App("whisper-torgomale")
 image = modal.Image.debian_slim(python_version="3.11").pip_install(
     "torch",
     "transformers>=4.44,<5",
@@ -25,11 +25,11 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
     "librosa",
     "accelerate>=0.33,<2",
 )
-vol = modal.Volume.from_name("uaspeech-data", create_if_missing=True)
+vol = modal.Volume.from_name("torgomale-data", create_if_missing=True)
 
 
 @app.function(image=image, gpu="A10G", volumes={"/data": vol}, timeout=60 * 60 * 3)
-def train(epochs: int = 3, lr: float = 1e-5, batch: int = 16, eval_n: int = 800, train_n: int = 5000):
+def train(epochs: int = 3, lr: float = 1e-5, batch: int = 16, eval_n: int = 0):
     import json
     import re
     from dataclasses import dataclass
@@ -50,10 +50,7 @@ def train(epochs: int = 3, lr: float = 1e-5, batch: int = 16, eval_n: int = 800,
     _norm = lambda s: re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", s.lower())).strip()
 
     raw = load_dataset(DATASET)
-    train_ds = raw["train"].shuffle(seed=0)
-    if train_n and len(train_ds) > train_n:
-        train_ds = train_ds.select(range(train_n))
-    train_ds = train_ds.cast_column("audio", Audio(sampling_rate=16000))
+    train_ds = raw["train"].cast_column("audio", Audio(sampling_rate=16000))
     eval_ds = raw["test"].cast_column("audio", Audio(sampling_rate=16000))
     if eval_n and len(eval_ds) > eval_n:
         eval_ds = eval_ds.select(range(eval_n))
@@ -62,13 +59,13 @@ def train(epochs: int = 3, lr: float = 1e-5, batch: int = 16, eval_n: int = 800,
     def prep(b):
         a = b["audio"]
         b["input_features"] = proc.feature_extractor(a["array"], sampling_rate=16000).input_features[0]
-        b["labels"] = proc.tokenizer(b["sentence"]).input_ids
+        b["labels"] = proc.tokenizer(b["text"]).input_ids
         return b
 
     cols = train_ds.column_names
     tr = train_ds.map(prep, remove_columns=cols)
-    ev_refs = [r for r in eval_ds["sentence"]]
-    ev_lang = [r for r in eval_ds["severity"]]
+    ev_refs = [r for r in eval_ds["text"]]
+    ev_lang = ["all" for _ in range(len(eval_ds))]
     ev = eval_ds.map(prep, remove_columns=cols)
 
     @dataclass
@@ -120,7 +117,7 @@ def train(epochs: int = 3, lr: float = 1e-5, batch: int = 16, eval_n: int = 800,
     model = WhisperForConditionalGeneration.from_pretrained(BASE)
     model.generation_config.max_length = 225
     args = Seq2SeqTrainingArguments(
-        output_dir="/data/whisper-uaspeech", per_device_train_batch_size=batch,
+        output_dir="/data/whisper-torgomale", per_device_train_batch_size=batch,
         per_device_eval_batch_size=batch, learning_rate=lr, warmup_ratio=0.1,
         num_train_epochs=epochs, fp16=True, eval_strategy="no", save_strategy="no",
         logging_steps=25, report_to=[],
@@ -134,10 +131,10 @@ def train(epochs: int = 3, lr: float = 1e-5, batch: int = 16, eval_n: int = 800,
     dump = []
     for b, t in zip(base_rows, tuned_rows):
         dump.append({"speaker": b["lang"], "ref": b["ref"], "base": b["base"], "tuned": t["tuned"]})
-    open("/data/uaspeech_eval_dump.jsonl", "w").write("\n".join(json.dumps(d) for d in dump) + "\n")
+    open("/data/torgomale_eval_dump.jsonl", "w").write("\n".join(json.dumps(d) for d in dump) + "\n")
     vol.commit()
 
-    print("\n=== UASpeech base vs fine-tuned WER (by severity) ===")
+    print("\n=== TORGO-male base vs fine-tuned WER ===")
     print(f"{'accent':<16}{'base':>9}{'tuned':>9}{'delta':>9}")
     for k in sorted(set(list(base_wer) + list(tuned_wer))):
         b, t = base_wer.get(k, 0), tuned_wer.get(k, 0)
