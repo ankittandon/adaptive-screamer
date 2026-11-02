@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Styling Layer — Flyer</title>
+<style>
+  :root{
+    --bg:#0c0e14; --panel:#141824; --panel2:#0f1320; --ink:#eef1f7; --muted:#9aa4b8;
+    --line:#232a3a; --accent:#ff7a3d; --good:#3ddc97; --cool:#5aa9ff; --bad:#ff5a6a; --warn:#ffd166;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:840px;margin:0 auto;padding:48px 22px 96px}
+  .kicker{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:14px}
+  h1{font-size:38px;line-height:1.1;font-weight:750;letter-spacing:-.02em;margin-bottom:12px}
+  .dek{font-size:19px;color:var(--muted);max-width:60ch;margin-bottom:8px}
+  .dek b{color:var(--ink);font-weight:600}
+  h2{font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:40px 0 14px;padding-top:26px;border-top:1px solid var(--line)}
+  p{font-size:16px;color:#cdd4e3;margin:10px 0;max-width:68ch}
+  b,strong{color:var(--ink);font-weight:650}
+  code{font-family:var(--mono);font-size:13px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#dfe5f2}
+  .accent{color:var(--accent)} .good{color:var(--good)} .cool{color:var(--cool)} .bad{color:var(--bad)}
+  .grid{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0}
+  .card{flex:1;min-width:210px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .card h3{font-size:16px;font-weight:650;margin-bottom:6px}
+  .card p{font-size:14px;margin:4px 0;color:var(--muted)}
+  .card .big{font-size:30px;font-weight:750;font-variant-numeric:tabular-nums}
+  ul{margin:10px 0 10px 2px;padding-left:20px} li{font-size:15px;color:#cdd4e3;margin-bottom:7px}
+  li b{color:var(--ink)}
+  .slop{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .tag{font-size:13px;background:#2a1712;border:1px solid #5a2a1c;color:#ffb59a;border-radius:999px;padding:5px 12px}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:15px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+  tr.ours td{color:var(--ink);font-weight:600}
+  .ba{display:flex;flex-direction:column;gap:12px;margin:14px 0}
+  .ba .row{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .ba .lab{font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:700}
+  .ba .txt{font-size:15px;color:#dfe5f2;font-family:var(--mono);line-height:1.55}
+  .mark{background:rgba(255,90,106,.18);border-bottom:1.5px solid var(--bad);color:#ffc2c9;border-radius:2px;padding:0 2px}
+  .keep{background:rgba(61,220,151,.16);border-bottom:1.5px solid var(--good);color:#bff3dd;border-radius:2px;padding:0 2px}
+  .pill{display:inline-block;font-size:12px;border-radius:999px;padding:3px 10px;font-weight:600;margin-left:8px}
+  .pill.bad{background:#2a1316;color:#ff9aa6;border:1px solid #5a2430}
+  .pill.good{background:#122a20;color:#8ff0c6;border:1px solid #1f5a41}
+  .foot{margin-top:46px;padding-top:22px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+  .foot code{font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Screamer · the styling layer · powered by Fireworks</div>
+  <h1>Dictation that writes like <span class="accent">you</span>, not like AI.</h1>
+  <p class="dek">Speech-to-text is messy. The obvious fix — ask an LLM to "clean it up" —
+  makes it sound like a robot. We built a harness that fixes the mess <b>and</b> strips
+  the AI tells, in your own voice, while keeping exactly what you meant.</p>
+
+  <h2>The problem</h2>
+  <p>Raw dictation is full of filler, false starts, and run-ons
+  (<code>"um so i think we should uh ship it"</code>). Hand it to a frontier model with a
+  naive "clean this up" prompt and you get fluent text — but littered with
+  <b class="bad">slop</b>: the stylistic fingerprints of AI writing. Worse, big models
+  quietly <b>change what you meant</b> — hardening a "maybe" into a certainty, dropping a
+  "sorry," inventing detail.</p>
+
+  <h2>What is "slop"?</h2>
+  <p>The tell-tale markers of machine writing — grounded in <b>Kobak et al. 2025</b>
+  (measuring excess "AI vocabulary"). We detect and remove:</p>
+  <div class="slop">
+    <span class="tag">em / en dashes —</span>
+    <span class="tag">buzzwords: delve, leverage, seamless, robust</span>
+    <span class="tag">"not X, but Y"</span>
+    <span class="tag">rule-of-three lists</span>
+    <span class="tag">signposts: "at the end of the day"</span>
+    <span class="tag">rhetorical questions</span>
+    <span class="tag">", which …" clause-stitching</span>
+  </div>
+
+  <h2>What we do</h2>
+  <p>An <b>anti-slop harness</b> on a small open model (on Fireworks) rewrites the raw
+  transcript into clean written text. It's <b>not a fine-tune — it's a harness</b>, which
+  is cheap, instant, and portable:</p>
+  <div class="grid">
+    <div class="card"><h3>Anti-slop prompt</h3><p>Strict rules: fix filler &amp; punctuation, ban every AI tell, keep the speaker's voice and register.</p></div>
+    <div class="card"><h3>Domain glossary</h3><p>Fixes clear mis-transcriptions (e.g. "stylus tick layer" → "stylistic layer") without forcing terms.</p></div>
+    <div class="card"><h3>Slop gate</h3><p>Scores the output and preserves intent; returns text unchanged when it's already clean.</p></div>
+  </div>
+
+  <h2>How we evaluate it</h2>
+  <p>Three metrics on a <b>held-out set of 120 dictations</b>, all on Fireworks (models +
+  a <b>neutral judge</b>, so we never grade our own homework) via Fireworks' <b>Eval
+  Protocol</b>:</p>
+  <div class="grid">
+    <div class="card"><h3>Slop / 1k</h3><p>Rules-based detector (Kobak-grounded), kept in exact parity between the app (Rust) and the eval (Python). Lower is better.</p></div>
+    <div class="card"><h3>Intent fidelity</h3><p>LLM judge: did the rewrite keep every claim, hedge, and speech act? 0–1, higher better.</p></div>
+    <div class="card"><h3>Writing quality</h3><p>LLM judge: does it read like something you'd have typed, in your voice? 0–1, higher better.</p></div>
+  </div>
+
+  <h2>How we improve it — the proof</h2>
+  <p>Head-to-head vs a <b>frontier-class open model</b> (Kimi K3), same inputs,
+  with bootstrap 95% CIs and McNemar's exact test:</p>
+  <table>
+    <tr><th>Approach</th><th class="r">slop/1k</th><th class="r">intent</th><th class="r">quality</th><th class="r">latency</th></tr>
+    <tr><td>Frontier model, naive prompt</td><td class="r">27.5</td><td class="r">0.92</td><td class="r">0.87</td><td class="r">5.6 s</td></tr>
+    <tr><td>Frontier model + our harness</td><td class="r">3.5</td><td class="r">0.98</td><td class="r">0.95</td><td class="r">8.5 s</td></tr>
+    <tr class="ours"><td>Ours — small model + harness</td><td class="r good">8.4</td><td class="r good">0.98</td><td class="r good">0.93</td><td class="r good">2.7 s</td></tr>
+  </table>
+  <ul>
+    <li><b>We beat the frontier model's out-of-box output on every axis</b> — slop,
+    intent, and quality — all statistically significant (slop-free rate 74% vs 47%,
+    McNemar <b>p = 1.4×10⁻⁵</b>), at <b>~2× lower latency</b>.</li>
+    <li>Against the frontier model running <b>our same harness</b>, we <b>match it on
+    intent and quality at ~3× the speed</b> (2.7 s vs 8.5 s) — the frontier model is a
+    touch cleaner, the honest tradeoff we disclose.</li>
+    <li><b>The harness is the lever:</b> it cuts slop ~8× on <i>any</i> model.</li>
+  </ul>
+
+  <h2>See it</h2>
+  <div class="ba">
+    <div class="row"><div class="lab" style="color:var(--muted)">Raw dictation (what you said)</div>
+      <div class="txt">hey um i talked to jenny this morning and she said the uh the delivery is gonna be late again like maybe thursday instead of tuesday i mean wednesday sorry and she asked if you can call her back before noon</div></div>
+    <div class="row"><div class="lab" style="color:var(--bad)">Frontier model, naive prompt <span class="pill bad">slop + intent drift</span></div>
+      <div class="txt">I talked to Jenny this morning. She said the delivery is going to be late again <span class="mark">—</span> <span class="mark">it's now expected Thursday</span> instead of Wednesday. She asked if you could call her back before noon.</div></div>
+    <div class="row"><div class="lab" style="color:var(--good)">Ours — small model + harness <span class="pill good">clean + faithful</span></div>
+      <div class="txt">So I talked to Jenny this morning, and she said the delivery is going to be late again, <span class="keep">maybe Thursday</span> instead of Wednesday, <span class="keep">sorry</span>. She asked if you can call her back before noon.</div></div>
+  </div>
+  <p style="font-size:14px;color:var(--muted)">The frontier model adds an <span class="bad">em-dash</span> and quietly <span class="bad">hardens "maybe Thursday" into a certainty</span>, dropping the "sorry." Ours keeps the hedge, the apology, and your voice — with no AI tells.</p>
+
+  <div class="foot">
+    <b style="color:var(--ink)">Reproducible.</b> <code>evals/</code>:
+    <code>generate_styling_eval.py</code> (eval set), <code>styling_headtohead.py</code>
+    (3-arm run), <code>styling_ci.py</code> (bootstrap), <code>mcnemar.py</code>
+    (McNemar). Slop detector: <code>screamer-styling/src/slop.rs</code> ·
+    <code>evals/scorers/slop.py</code>. All models + judges on Fireworks.
+  </div>
+
+</div>
+</body>
+</html>
