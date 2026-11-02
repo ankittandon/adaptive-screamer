@@ -1,38 +1,46 @@
 # Adaptive Screamer — Fireworks: Deploy submission
 
-**Task:** on-device dictation that works for people with **dysarthric speech**.
-**One-line result:** specialized open models beat frontier ASR baselines on
-dysarthric speech — WER roughly **halved on held-out data, with statistically
-significant gains** — running **on-device**, inside a shipping macOS app.
+**Task:** make on-device dictation **adaptable to each user** — at the *ear* (how
+you speak) and the *pen* (how you write).
+**One-line result:** at both layers, a specialized open model / harness **beats a
+frontier baseline** on held-out data — dysarthric ASR with WER roughly halved
+(statistically significant), and a styling harness that strips AI-slop while
+preserving intent — all in a shipping, on-device macOS app.
 
-- **Judging commit:** `0bb641b` (branch `main`)
+- **Judging commit:** latest on `main` (run `git rev-parse HEAD`); see end of file
 - **Repository:** https://github.com/ankittandon/adaptive-screamer (public)
-- **Sponsor tracks entered:** Fireworks (eligibility — see below), **NVIDIA Best-Use**
+- **Sponsor tracks entered:** **Fireworks** (styling + Eval Protocol), **NVIDIA Best-Use** (on-device ASR)
 
 ---
 
 ## 1. Project overview
 
-**Who benefits.** People with **dysarthria** (cerebral palsy, ALS, stroke) are the
-users who most need hands-light dictation and the ones general ASR serves worst —
-they're effectively locked out of dictation tools. Secondarily, *every* user: the
-system is free, fully private, and on-device (no subscription, no cloud).
+**The idea: one dictation app that adapts to you at two layers.** Screamer is a
+real, free, private, on-device macOS dictation app. We make it **adaptable** — it
+learns *how you speak* and *how you write* — using specialized open models and
+harnesses that beat frontier baselines, measured honestly.
 
-**What the system does.** Screamer is a real macOS push-to-talk dictation app.
-Speech → text, entirely on-device. We make it (a) **usable for dysarthric
-speakers** by fine-tuning open ASR, (b) **cheaper/faster** than cloud ASR, and (c)
-**cleaner** via a Fireworks-powered styling layer.
+- **The ear — ASR adaptation (NVIDIA / on-device).** Fine-tune the open ASR model
+  to a speaker's voice, including **dysarthric speech** that general ASR fails. On
+  held-out data, WER is roughly halved with statistically significant gains;
+  converted to GGML and shipped on-device as a selectable model.
+- **The pen — styling adaptation (Fireworks).** A harness that rewrites raw
+  transcripts into clean written text in the user's *own* voice — fixing filler,
+  punctuation, and mis-transcriptions while **removing AI-slop** and preserving
+  intent. Runs on a Fireworks open model and is evaluated on Fireworks' **Eval
+  Protocol** (slop + intent + quality judges).
+- **The flywheel.** Both layers improve **per-user, on-device, during downtime** —
+  continuous adaptation that keeps the model yours and your data local.
 
-**Approach.** Three measured workstreams against frontier baselines:
-- **C — Accessibility (headline):** fine-tune open Whisper on public dysarthric
-  data (TORGO), convert to GGML, ship it on-device as a selectable model.
-- **A — Efficiency:** on-device vs cloud ASR — latency, cost, privacy.
-- **B — Styling (Fireworks):** clean/personalize dictated text with a Fireworks
-  model, evaluated on Fireworks' **Eval Protocol**.
+**Who benefits.** Everyone who dictates — it's free, private, and local — and
+especially **people with dysarthria** (cerebral palsy, ALS, stroke), who need
+hands-light input most and whom general ASR serves worst.
 
-**Why it matters.** A free, private, local dictation tool made usable by people it
-used to fail — plus 2.3× cheaper/faster transcription than cloud at competitive
-quality.
+**Why it matters.** A dictation tool that adapts to the individual: usable by
+people it used to fail, cleaner output in your own voice, at $0 and fully private.
+
+Supporting result — **efficiency:** on-device ASR is ~2.3× faster than cloud at
+$0 and no cold start (§3).
 
 ---
 
@@ -179,3 +187,8 @@ The project **uses Fireworks** in two core places:
 - [ ] Demo video < 120s — see [docs/demo-script.md](docs/demo-script.md)
 - [x] Team information — *(add all members in the submission form)*
 - [x] Sponsor-track information — §4
+
+---
+
+**Judging commit:** submit the current `main` HEAD at submission time
+(`git rev-parse HEAD`). This document and the code are versioned together.
