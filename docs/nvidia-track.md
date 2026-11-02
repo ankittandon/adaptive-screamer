@@ -22,6 +22,26 @@ The NVIDIA category is won **alongside** it, not by swapping it out:
 - **The Spark pitch writes itself:** on-device Parakeet-in-Screamer = private
   on-prem fine-tuning + a local ONNX runtime = exactly what a DGX Spark unlocks.
 
+## Measured baseline (done — 100% NVIDIA, no infra)
+
+NVIDIA-hosted **Parakeet-TDT-0.6b-v2** (NVCF Riva gRPC, via
+[`evals/nvidia_asr_bench.py`](../evals/nvidia_asr_bench.py)) on the same 181 TORGO
+held-out clips:
+
+| Model (base) | F01 severe | F03 moderate | F04 mild | Overall |
+|---|--:|--:|--:|--:|
+| Whisper base | 89.7% | 52.4% | 22.5% | 42.7% |
+| **Parakeet base (NVIDIA)** | 82.8% | 92.4% | 13.9% | 60.3% |
+| **Our fine-tuned Whisper** | 44.8% | 31.2% | 7.0% | **22.3%** |
+
+**The thesis in one table:** two SOTA *general* models (Whisper, NVIDIA's own
+Parakeet) both fail on dysarthric speech — 42–60% WER — while our *specialized*
+fine-tune roughly halves it. Parakeet is great on mild speech (13.9%) but brittle
+on moderate/severe (short single-word clips drive F03 up; spot-checked as genuine
+errors/omissions, not a bug). **So the NVIDIA headline writes itself: take
+NVIDIA's open Parakeet and push its frontier on accessibility** — the fine-tune
+has ~60 → ~20s of WER to win back, exactly as Whisper did.
+
 ## Fallback ladder (ceiling → floor — we stay in the category at every rung)
 
 - **A (win it):** fine-tuned Parakeet (NeMo) beats base Parakeet *and* our Whisper
