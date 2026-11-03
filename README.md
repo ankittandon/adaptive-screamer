@@ -4,11 +4,14 @@
 
 # Adaptive Screamer
 
-It adds opt-in dictation telemetry so a Whisper model can be fine-tuned on my own voice and vocabulary.
+### 📓 &nbsp; [**→ Read the Builder Guide**](https://ankittandon.github.io/adaptive-screamer/deploy-submission.html)
 
-**Offline push-to-talk dictation for macOS.**
+*How we built this, step by step — task, baseline, fine-tunes, evaluation, and results.*
+&nbsp;·&nbsp; [Full write-up](SUBMISSION.md) &nbsp;·&nbsp; [All decks & results](https://ankittandon.github.io/adaptive-screamer/)
 
-Hold a key, speak, release, and your text is pasted instantly.
+---
+
+**Offline, adaptive push-to-talk dictation for macOS** — open models fine-tuned for dysarthric and accented speech, served on-device. Hold a key, speak, release, and your text is pasted instantly.
 
 [![Built with Rust](https://img.shields.io/badge/Built_with-Rust-B7410E?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Metal GPU](https://img.shields.io/badge/Metal-GPU_Accelerated-0071E3?style=for-the-badge&logo=apple&logoColor=white)](#performance)

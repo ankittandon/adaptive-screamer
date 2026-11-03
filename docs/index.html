@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive Screamer — Builder Guide & Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--cream:#F9F7F5;--panel:#fff;--ink:#280016;--ink2:#5c3345;--muted:#8a7681;--line:#e6ddd9;--accent:#c2410c;
+    --serif:"Crimson Text",Georgia,serif;--sans:"Inter",sans-serif;--mono:"JetBrains Mono",monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--cream);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:720px;margin:0 auto;padding:64px 22px 100px}
+  .brand{display:flex;align-items:center;gap:14px;margin-bottom:28px}
+  .brand img{width:64px;height:64px}
+  .brand .t{font-family:var(--serif);font-size:34px;font-weight:600}
+  .kick{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+  p.lead{font-size:18px;color:var(--ink2);max-width:60ch;margin-bottom:34px}
+  a.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 24px;margin-bottom:14px;text-decoration:none;color:var(--ink);transition:border-color .15s}
+  a.card:hover{border-color:var(--accent)}
+  a.card.hero{border:2px solid var(--accent);background:#fdf1ec}
+  a.card .h{font-size:19px;font-weight:600;font-family:var(--serif)}
+  a.card .d{font-size:14px;color:var(--muted);margin-top:3px}
+  .foot{margin-top:36px;font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .foot a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><img src="screamer-logo.png" alt="Screamer"><span class="t">Adaptive Screamer</span></div>
+  <div class="kick">Fireworks: Deploy · Project Possibility</div>
+  <p class="lead">Adaptive, on-device dictation that works for the people mainstream AI leaves behind — open models fine-tuned for dysarthric and accented speech, served locally.</p>
+
+  <a class="card hero" href="deploy-submission.html">
+    <div class="h">📓 Builder Guide →</div>
+    <div class="d">The full build, in six steps: task, baseline, method, results, and proof (with charts).</div>
+  </a>
+  <a class="card" href="talk-deck.html">
+    <div class="h">Pitch deck</div>
+    <div class="d">The 7-slide talk track with the headline results.</div>
+  </a>
+  <a class="card" href="case-study-accessibility.html">
+    <div class="h">Accessibility case study</div>
+    <div class="d">Dysarthric ASR fine-tune — method, numbers, and how we know it isn't overfitting.</div>
+  </a>
+  <a class="card" href="styling-flyer.html">
+    <div class="h">Styling layer flyer</div>
+    <div class="d">What "AI slop" is, how we score it, and the before/after.</div>
+  </a>
+
+  <div class="foot">Code &amp; evidence: <a href="https://github.com/ankittandon/adaptive-screamer">github.com/ankittandon/adaptive-screamer</a></div>
+</div>
+</body>
+</html>
